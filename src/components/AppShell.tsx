@@ -23,14 +23,14 @@ const NAV: NavItem[] = [
   { href: "/crm", label: "CRM", icon: KanbanSquare },
   { href: "/agenda", label: "Agenda", icon: CalendarDays },
   { href: "/propostas", label: "Propostas", icon: FilePlus2 },
-  { href: "/disputar", label: "Robô de Lances", icon: Gavel, tag: "Etapa 2" },
+  { href: "/disputar", label: "Robô de Lances", icon: Gavel, tag: "Aguarde" },
   { href: "/monitoramento", label: "Monitoramento", icon: MessageSquareText },
   { href: "/conectar-robo", label: "Conectar Robô", icon: PlugZap },
   { href: "/inteligencia-mercado", label: "Inteligência de Mercado", icon: LineChart },
   { href: "/atas-registro-preco", label: "Atas de Registro", icon: ScrollText },
   { href: "/documentos", label: "Documentos", icon: FolderOpen },
   { href: "/alertas", label: "Alertas", icon: Bell },
-  { href: "/relatorios", label: "Relatórios", icon: BarChart3, tag: "Etapa 2" },
+  { href: "/relatorios", label: "Relatórios", icon: BarChart3, tag: "Aguarde" },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
 ];
 
