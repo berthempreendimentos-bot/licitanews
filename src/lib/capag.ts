@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { readSheet } from "read-excel-file/node";
 
 /**
@@ -25,7 +26,8 @@ export type CapagMunicipio = {
 export type CapagBase = { fonte: string; atualizadoEm: string; url: string; municipios: CapagMunicipio[] };
 
 const CKAN = "https://www.tesourotransparente.gov.br/ckan/api/3/action/package_show?id=capag-municipios";
-const CACHE_DIR = path.join(process.cwd(), ".cache");
+// Na Vercel (e em outros serverless) só /tmp aceita escrita; localmente fica em .cache/ do projeto.
+const CACHE_DIR = process.env.VERCEL ? path.join(tmpdir(), "peppacorp-cache") : path.join(process.cwd(), ".cache");
 const CACHE_FILE = path.join(CACHE_DIR, "capag-municipios.json");
 const TTL = 7 * 86400000;
 

@@ -25,13 +25,30 @@ async function viaServer(cfg, codigo, messages) {
 }
 
 // Endereços onde a ponte (bridge.js) roda — mesma lista do manifesto.
-const BRIDGE_HOSTS = /^http:\/\/(localhost|127\.0\.0\.1|[^/]+\.localhost|192\.168\.18\.28)(:\d+)?\//;
+// Endereços onde a ponte (bridge.js) roda pelo manifesto: local, rede e Vercel.
+const BRIDGE_HOSTS = /^(http:\/\/(localhost|127\.0\.0\.1|[^/]+\.localhost|192\.168\.18\.28)(:\d+)?|https:\/\/[^/]+\.vercel\.app)\//;
+// Domínio próprio do PEPPACORP (ex.: licita.suaempresa.com.br), configurado no popup.
+let servidorOrigem = null;
+chrome.storage.local.get('peppa_server').then((c) => { servidorOrigem = originOf(c.peppa_server || ''); });
+chrome.storage.onChanged.addListener((m, area) => { if (area === 'local' && m.peppa_server) servidorOrigem = originOf(m.peppa_server.newValue || ''); });
+const ehPeppacorp = (url) => !!url && (BRIDGE_HOSTS.test(url) || (!!servidorOrigem && originOf(url) === servidorOrigem));
+
+/** Domínio fora do manifesto: registra a ponte nele (precisa da permissão concedida no popup). */
+async function registrarPonte(server) {
+  const origem = originOf(server);
+  if (!origem || BRIDGE_HOSTS.test(origem + '/')) return;
+  if (!(await chrome.permissions.contains({ origins: [origem + '/*'] }))) return;
+  await chrome.scripting.unregisterContentScripts({ ids: ['ponte-dominio'] }).catch(() => {});
+  await chrome.scripting.registerContentScripts([{ id: 'ponte-dominio', matches: [origem + '/*'], js: ['bridge.js'], runAt: 'document_start' }]);
+}
 
 async function viaBridge(cfg, codigo, messages) {
   const origin = originOf(cfg.peppa_server);
-  const tabs = (await chrome.tabs.query({})).filter((t) => t.url && BRIDGE_HOSTS.test(t.url));
-  // Primeiro a aba do endereço configurado; depois qualquer outra aba do PEPPACORP
-  // (ex.: o sistema mudou de porta). Cada aba confere a chave antes de gravar.
+  // As mensagens (e a chave) só vão para a aba do endereço configurado ou para o PEPPACORP local
+  // (ex.: o sistema mudou de porta). Nunca para outro site *.vercel.app: qualquer um publica lá.
+  const LOCAL = /^http:\/\/(localhost|127\.0\.0\.1|[^/]+\.localhost|192\.168\.18\.28)(:\d+)?\//;
+  const tabs = (await chrome.tabs.query({})).filter((t) => t.url && (originOf(t.url) === origin || (LOCAL.test(t.url) && LOCAL.test(origin + '/'))));
+  // Primeiro a aba do endereço configurado. Cada aba confere a chave antes de gravar.
   tabs.sort((a, b) => (originOf(b.url) === origin) - (originOf(a.url) === origin));
   let lastError = null;
   const msg = { action: 'peppa_bridge_ingest', key: cfg.peppa_key, codigo_compra: codigo, messages: messages };
@@ -129,7 +146,7 @@ async function setAlarmState(on) {
   // Avisa as abas do PEPPACORP (mostram a faixa "Silenciar alarme").
   const tabs = await chrome.tabs.query({});
   for (const t of tabs) {
-    if (t.url && BRIDGE_HOSTS.test(t.url)) chrome.tabs.sendMessage(t.id, { action: 'peppa_alarm_state', on: on }).catch(() => {});
+    if (ehPeppacorp(t.url)) chrome.tabs.sendMessage(t.id, { action: 'peppa_alarm_state', on: on }).catch(() => {});
   }
 }
 
@@ -174,7 +191,7 @@ chrome.notifications.onClicked.addListener(async (id) => {
   stopAlarm();
   chrome.notifications.clear(id);
   if (id.indexOf('peppa-captcha-') === 0) return;
-  const tabs = (await chrome.tabs.query({})).filter((t) => t.url && BRIDGE_HOSTS.test(t.url));
+  const tabs = (await chrome.tabs.query({})).filter((t) => ehPeppacorp(t.url));
   if (tabs[0]) {
     chrome.windows.update(tabs[0].windowId, { focused: true }).catch(() => {});
     chrome.tabs.update(tabs[0].id, { active: true }).catch(() => {});
@@ -188,7 +205,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   for (const tab of tabs) {
     if (!tab.url) continue;
     const target = { tabId: tab.id };
-    if (BRIDGE_HOSTS.test(tab.url)) {
+    if (ehPeppacorp(tab.url)) {
       chrome.scripting.executeScript({ target, files: ['bridge.js'] }).catch(() => {});
     } else if (/^https:\/\/([^/]+\.)?gov\.br\//.test(tab.url)) {
       chrome.scripting.executeScript({ target, files: ['probe.js'], world: 'MAIN' })
@@ -215,7 +232,9 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
       sendResponse({ ok: false, error: 'Endereço do PEPPACORP ou chave inválidos.' });
       return false;
     }
-    chrome.storage.local.set({ peppa_server: server, peppa_key: key }, () => sendResponse({ ok: true }));
+    chrome.storage.local.set({ peppa_server: server, peppa_key: key }, () => {
+      registrarPonte(server).catch(() => {}).finally(() => sendResponse({ ok: true }));
+    });
     return true;
   }
   if (req.action === 'peppa_captcha' && sender.tab) {

@@ -10,6 +10,7 @@ import {
 import { AuthGate } from "./AuthGate";
 import { AlertasDocumentos } from "./AlertasDocumentos";
 import { ExtensaoPonte } from "./ExtensaoPonte";
+import { BotaoSair } from "./BotaoSair";
 import { useCollection, useEmpresa } from "@/lib/store";
 
 type NavItem = { href: string; label: string; icon: React.ElementType; tag?: string };
@@ -106,6 +107,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
             <div className="text-sm font-semibold truncate">{empresa.razao_social || "Minha empresa"}</div>
             {empresa.cnpj && <div className="hidden sm:block text-xs text-muted">CNPJ {empresa.cnpj}</div>}
+            <BotaoSair />
           </header>
           <main className="px-4 lg:px-8 py-6 max-w-[1400px]">{children}</main>
         </div>

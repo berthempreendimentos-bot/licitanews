@@ -28,6 +28,23 @@ Com o Supabase ligado:
 - mensagens e alertas aparecem na tela na hora (Realtime), em qualquer aba ou computador logado;
 - as coleções são lidas em páginas, sem o limite de 1.000 linhas por consulta do Supabase.
 
+## Publicar na Vercel
+
+1. Em [vercel.com/new](https://vercel.com/new), importe o repositório do GitHub. O framework (Next.js) é detectado sozinho; não mude os comandos de build.
+2. Em **Environment Variables**, cadastre (Production, Preview e Development):
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` (só servidor; nunca com prefixo `NEXT_PUBLIC_`)
+   - `ANTHROPIC_API_KEY` (opcional — sem ela, use o Google Gemini em Configurações)
+3. Clique em **Deploy**. As funções rodam em São Paulo (`gru1`, definido em `vercel.json`), perto do PNCP e do Compras.gov.br.
+4. No Supabase, em **Authentication → URL Configuration**, adicione o endereço da Vercel (ex.: `https://licitanews.vercel.app`) em *Site URL* e em *Redirect URLs*.
+5. Abra o sistema publicado → **Conectar Robô** → **Conectar extensão** (a extensão pede confirmação do endereço). Domínios `*.vercel.app` já são aceitos pela extensão; para um domínio próprio, salve o endereço no popup da extensão (ela pede a permissão uma vez).
+
+Observações:
+- Análise de edital e pesquisas com IA podem levar alguns minutos (as rotas pedem até 300 s). Confira o limite de duração de funções do seu plano em *Settings → Functions*.
+- O cache da planilha CAPAG fica em `/tmp` na Vercel (o disco do projeto é somente leitura) e é baixado de novo quando a função reinicia.
+- O build de produção pode ser testado antes com `npm run build && npm start`.
+
 ## Módulos
 
 | Módulo | Situação |

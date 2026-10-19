@@ -30,6 +30,11 @@
     var d = ev.data;
     if (d.type === 'PEPPA_EXT_PING') { announce(); return; }
     if (d.type === 'PEPPA_EXT_CONNECT') {
+      // Confirmação da pessoa: um site qualquer não pode redirecionar o chat dos pregões para ele.
+      if (!window.confirm('Conectar a extensão PEPPACORP Monitor a ' + window.location.origin + '?\n\nO chat dos pregões monitorados passará a ser enviado para este endereço.')) {
+        window.postMessage({ type: 'PEPPA_EXT_CONNECT_RESULT', ok: false, error: 'Conexão cancelada.' }, window.location.origin);
+        return;
+      }
       chrome.runtime.sendMessage({ action: 'peppa_save_config', server: window.location.origin, key: d.key }, function (resp) {
         window.postMessage({ type: 'PEPPA_EXT_CONNECT_RESULT', ok: !!(resp && resp.ok), error: resp && resp.error }, window.location.origin);
       });
