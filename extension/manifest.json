@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "PEPPACORP Monitor",
+  "version": "0.2.0",
+  "description": "Captura o chat do pregoeiro no Comprasnet e envia ao PEPPACORP LICITA (alertas de menções, prazos e convocações).",
+  "permissions": ["storage", "tabs", "notifications", "scripting", "offscreen"],
+  "host_permissions": [
+    "https://*.gov.br/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "http://*.localhost/*",
+    "http://192.168.18.28/*"
+  ],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://*.gov.br/*"],
+      "js": ["probe.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://*.gov.br/*"],
+      "js": ["monitor.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://localhost/*", "http://127.0.0.1/*", "http://*.localhost/*", "http://192.168.18.28/*"],
+      "js": ["bridge.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": { "default_popup": "popup.html", "default_title": "PEPPACORP Monitor", "default_icon": "icon.png" },
+  "icons": { "16": "icon.png", "48": "icon.png", "128": "icon.png" }
+}

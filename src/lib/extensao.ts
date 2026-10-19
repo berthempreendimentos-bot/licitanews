@@ -1,0 +1,60 @@
+"use client";
+
+import { comprasnetUrl } from "./monitor";
+
+// A extensão PEPPACORP Monitor se anuncia com PEPPA_EXT_HELLO (ao carregar e em resposta a PEPPA_EXT_PING).
+let versaoExtensao: string | null = null;
+if (typeof window !== "undefined") {
+  window.addEventListener("message", (ev) => {
+    if (ev.source === window && ev.data?.type === "PEPPA_EXT_HELLO") versaoExtensao = String(ev.data.version || "");
+  });
+  // O anúncio inicial da extensão sai antes deste código carregar: pede de novo.
+  window.postMessage({ type: "PEPPA_EXT_PING" }, window.location.origin);
+}
+
+/** Resolve com a versão da extensão, ou null se ela não responder em `ms`. */
+export function detectarExtensao(ms = 600): Promise<string | null> {
+  if (versaoExtensao) return Promise.resolve(versaoExtensao);
+  return new Promise((resolve) => {
+    const t = setTimeout(() => { window.removeEventListener("message", on); resolve(versaoExtensao); }, ms);
+    function on(ev: MessageEvent) {
+      if (ev.source !== window || ev.data?.type !== "PEPPA_EXT_HELLO") return;
+      clearTimeout(t);
+      window.removeEventListener("message", on);
+      resolve(String(ev.data.version || ""));
+    }
+    window.addEventListener("message", on);
+    window.postMessage({ type: "PEPPA_EXT_PING" }, window.location.origin);
+  });
+}
+
+type Abertura = { ok: boolean; jaAberta?: boolean; viaExtensao: boolean };
+
+/**
+ * Abre a página de acompanhamento da compra no Comprasnet.
+ * - mostrar = false (ao cadastrar): com a extensão, numa janela minimizada e sem som, para capturar em segundo plano.
+ * - mostrar = true (botão "Abrir no Comprasnet"): traz para frente a aba da compra (ou abre uma visível).
+ * Sem a extensão: abre numa aba nova — na hora do clique, senão o navegador bloqueia o pop-up.
+ */
+export function abrirNoComprasnet(codigo: string, mostrar = false): Promise<Abertura> {
+  const url = comprasnetUrl(codigo);
+  if (!versaoExtensao) {
+    window.open(url, "_blank", "noopener");
+    return Promise.resolve({ ok: true, viaExtensao: false });
+  }
+  return new Promise((resolve) => {
+    const reqId = `open-${codigo}-${Date.now()}`;
+    const timer = setTimeout(() => {
+      window.removeEventListener("message", onMessage);
+      resolve({ ok: false, viaExtensao: true });
+    }, 5000);
+    function onMessage(ev: MessageEvent) {
+      if (ev.source !== window || ev.data?.type !== "PEPPA_EXT_OPEN_RESULT" || ev.data.reqId !== reqId) return;
+      clearTimeout(timer);
+      window.removeEventListener("message", onMessage);
+      resolve({ ok: !!ev.data.ok, jaAberta: !!ev.data.already_open, viaExtensao: true });
+    }
+    window.addEventListener("message", onMessage);
+    window.postMessage({ type: "PEPPA_EXT_OPEN", reqId, url, show: mostrar }, window.location.origin);
+  });
+}

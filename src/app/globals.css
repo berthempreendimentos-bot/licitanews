@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f4f4f4;
+  --surface: #ffffff;
+  --border: #e0e0e0;
+  --text: #111111;
+  --muted: #6b6b6b;
+  --brand: #0a0a0a;
+  --brand-2: #1c1c1c;
+  --accent: #111111;
+  --accent-soft: #ececec;
+  --ok: #2b2b2b;
+  --warn: #5c5c5c;
+  --danger: #000000;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-brand-2: var(--brand-2);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-inter);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.15s, opacity 0.15s;
+  cursor: pointer;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #333333; }
+.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.btn-ghost:hover:not(:disabled) { background: #ededed; }
+
+.input {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 14px;
+  outline: none;
+}
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Impressão (proposta em PDF): esconde menu, cabeçalho e controles */
+.print-only { display: none; }
+@media print {
+  aside, header, .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  body { background: #fff; }
+  main { padding: 0 !important; max-width: none !important; }
+  .lg\:ml-64 { margin-left: 0 !important; }
+}
