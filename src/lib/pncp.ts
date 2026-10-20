@@ -62,7 +62,7 @@ function ymd(d: Date) {
  * Licitações com propostas abertas (encerramento a partir de hoje), por modalidade.
  * O PNCP exige modalidade e não tem busca textual — o filtro por termo é aplicado aqui.
  */
-export async function fetchAbertas(opts: { modalidade: number; uf?: string; cnpj?: string; pagina?: number; tamanho?: number }) {
+export async function fetchAbertas(opts: { modalidade: number; uf?: string; municipio?: string; cnpj?: string; pagina?: number; tamanho?: number }) {
   const dataFinal = new Date(Date.now() + 90 * 86400000);
   const params = new URLSearchParams({
     dataFinal: ymd(dataFinal),
@@ -71,6 +71,7 @@ export async function fetchAbertas(opts: { modalidade: number; uf?: string; cnpj
     tamanhoPagina: String(opts.tamanho ?? 50),
   });
   if (opts.uf) params.set("uf", opts.uf);
+  if (opts.municipio) params.set("codigoMunicipioIbge", opts.municipio);
   if (opts.cnpj) params.set("cnpj", opts.cnpj);
   const res = await fetch(`${BASE}/contratacoes/proposta?${params}`, {
     headers: { Accept: "application/json" },

@@ -3,7 +3,7 @@ import { fetchAbertas, matchText } from "@/lib/pncp";
 import type { Opportunity } from "@/lib/types";
 
 /**
- * GET /api/oportunidades?modalidades=6,8&uf=SP&q=termo1,termo2&pagina=1&valorMin=&valorMax=
+ * GET /api/oportunidades?modalidades=6,8&uf=SP&municipio=3550308&q=termo1,termo2&pagina=1&valorMin=&valorMax=
  * Sem termo: devolve uma página do PNCP por modalidade.
  * Com termo: varre até 6 páginas por modalidade e filtra pelo texto.
  */
@@ -11,6 +11,7 @@ export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams;
   const modalidades = (sp.get("modalidades") || "6").split(",").map(Number).filter(Boolean).slice(0, 4);
   const uf = sp.get("uf") || undefined;
+  const municipio = sp.get("municipio") || undefined; // código IBGE
   const termos = (sp.get("q") || "").split(",").map((t) => t.trim()).filter(Boolean);
   const pagina = Math.max(1, Number(sp.get("pagina") || 1));
   const valorMin = sp.get("valorMin") ? Number(sp.get("valorMin")) : null;
@@ -18,7 +19,7 @@ export async function GET(req: Request) {
 
   try {
     const pages = termos.length ? [1, 2, 3, 4, 5, 6] : [pagina];
-    const jobs = modalidades.flatMap((m) => pages.map((p) => fetchAbertas({ modalidade: m, uf, pagina: p }).catch(() => null)));
+    const jobs = modalidades.flatMap((m) => pages.map((p) => fetchAbertas({ modalidade: m, uf, municipio, pagina: p }).catch(() => null)));
     const results = await Promise.all(jobs);
     let total = 0;
     const seen = new Set<string>();

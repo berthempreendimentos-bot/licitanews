@@ -9,6 +9,8 @@ import type { Opportunity } from "@/lib/types";
 export default function Oportunidades() {
   const [q, setQ] = useState("");
   const [uf, setUf] = useState("");
+  const [municipio, setMunicipio] = useState("");
+  const [cidades, setCidades] = useState<{ id: number; nome: string }[]>([]);
   const [mods, setMods] = useState<number[]>([6, 8]);
   const [valorMin, setValorMin] = useState("");
   const [valorMax, setValorMax] = useState("");
@@ -25,6 +27,7 @@ export default function Oportunidades() {
       const params = new URLSearchParams({ modalidades: mods.join(","), pagina: String(p) });
       if (q.trim()) params.set("q", q);
       if (uf) params.set("uf", uf);
+      if (uf && municipio) params.set("municipio", municipio);
       if (valorMin) params.set("valorMin", valorMin);
       if (valorMax) params.set("valorMax", valorMax);
       try {
@@ -40,8 +43,25 @@ export default function Oportunidades() {
         setLoading(false);
       }
     },
-    [q, uf, mods, valorMin, valorMax],
+    [q, uf, municipio, mods, valorMin, valorMax],
   );
+
+  // Lista de municípios da UF (IBGE) para o filtro por cidade
+  useEffect(() => {
+    setMunicipio("");
+    setCidades([]);
+    if (!uf) return;
+    let ativo = true;
+    fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios?orderBy=nome`)
+      .then((r) => r.json())
+      .then((d: { id: number; nome: string }[]) => {
+        if (ativo) setCidades(d.map((c) => ({ id: c.id, nome: c.nome })));
+      })
+      .catch(() => {});
+    return () => {
+      ativo = false;
+    };
+  }, [uf]);
 
   useEffect(() => {
     void buscar(1);
@@ -63,7 +83,7 @@ export default function Oportunidades() {
       />
 
       <form
-        className="card p-4 mb-5 grid gap-3 md:grid-cols-[1fr_120px_140px_140px_auto]"
+        className="card p-4 mb-5 grid gap-3 md:grid-cols-[1fr_120px_200px_140px_140px_auto]"
         onSubmit={(e) => {
           e.preventDefault();
           void buscar(1);
@@ -74,12 +94,22 @@ export default function Oportunidades() {
           <option value="">Todas UFs</option>
           {UFS.map((u) => <option key={u}>{u}</option>)}
         </select>
+        <select
+          className="input"
+          value={municipio}
+          onChange={(e) => setMunicipio(e.target.value)}
+          disabled={!uf}
+          title={uf ? "Filtrar por cidade" : "Escolha uma UF para filtrar por cidade"}
+        >
+          <option value="">{uf ? (cidades.length ? "Todas as cidades" : "Carregando cidades…") : "Cidade (escolha a UF)"}</option>
+          {cidades.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+        </select>
         <input className="input" placeholder="Valor mín." inputMode="numeric" value={valorMin} onChange={(e) => setValorMin(e.target.value.replace(/\D/g, ""))} />
         <input className="input" placeholder="Valor máx." inputMode="numeric" value={valorMax} onChange={(e) => setValorMax(e.target.value.replace(/\D/g, ""))} />
         <button className="btn btn-primary justify-center" disabled={loading}>
           <Search size={14} /> Buscar
         </button>
-        <div className="md:col-span-5 flex flex-wrap gap-2">
+        <div className="md:col-span-6 flex flex-wrap gap-2">
           {MODALIDADES.map((m) => {
             const on = mods.includes(m.id);
             return (
@@ -98,7 +128,7 @@ export default function Oportunidades() {
 
       {error && <div className="card p-4 mb-4 text-sm text-danger">{error}</div>}
       {!loading && items.length === 0 && !error && (
-        <Empty title="Nenhuma licitação encontrada" text="Ajuste os termos, a UF ou as modalidades. A busca por termo varre as 300 primeiras licitações abertas de cada modalidade." />
+        <Empty title="Nenhuma licitação encontrada" text="Ajuste os termos, a UF, a cidade ou as modalidades. A busca por termo varre as 300 primeiras licitações abertas de cada modalidade." />
       )}
       <div className="grid gap-3 lg:grid-cols-2">
         {items.map((o) => <OpportunityCard key={o.id} o={o} />)}
