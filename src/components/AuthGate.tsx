@@ -6,7 +6,7 @@ import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail, UploadCloud, X } from "lu
 import { supabase } from "@/lib/supabase";
 import { assinarTempoReal, dadosLocais, db, descartarDadosLocais, importarDadosLocais } from "@/lib/store";
 
-/** Sem Supabase: modo demonstração liberado. Com Supabase: exige login por e-mail e senha. */
+/** Sem Supabase: modo demonstração liberado (só em desenvolvimento). Com Supabase: exige login por e-mail e senha. */
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(supabase ? undefined : null);
 
@@ -25,10 +25,26 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const uid = session?.user.id;
   useEffect(() => (uid ? assinarTempoReal(uid) : undefined), [uid]);
 
-  if (!supabase) return <>{children}</>;
+  if (!supabase) return process.env.NODE_ENV === "production" ? <SemConfiguracao /> : <>{children}</>;
   if (session === undefined) return <div className="p-10 text-muted text-sm">Carregando…</div>;
   if (!session) return <LoginForm />;
   return <><ImportarDemo />{children}</>;
+}
+
+/** Em produção, sem Supabase configurado, não libera o painel sem login. */
+function SemConfiguracao() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#f6f8fc] px-6">
+      <div className="max-w-md text-center">
+        <Lock size={28} className="mx-auto text-slate-500" />
+        <h1 className="mt-4 text-xl font-bold text-slate-900">Login indisponível</h1>
+        <p className="mt-2 text-sm text-slate-500">
+          O servidor de login não está configurado neste ambiente. Defina NEXT_PUBLIC_SUPABASE_URL e
+          NEXT_PUBLIC_SUPABASE_ANON_KEY nas variáveis de ambiente e publique novamente.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 /** Oferece copiar para a conta o que foi feito no modo demonstração (dados deste navegador). */
