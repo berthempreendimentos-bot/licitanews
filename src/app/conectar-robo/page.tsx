@@ -81,7 +81,7 @@ export default function ConectarRobo() {
           </ol>
           <div className="mt-4 rounded-lg bg-bg p-3 text-xs text-muted space-y-1">
             <div>A extensão só lê as respostas do chat que o próprio portal carrega. Ela não lê sua senha nem o token do portal e não envia nada de outras telas.</div>
-            <div>Para entrar no PEPPACORP, ela usa a chave de ingestão, nunca o seu login. Essa chave só permite gravar mensagens.</div>
+            <div>Para entrar no PEPPACORP, ela usa o token, nunca o seu login. O token só permite gravar mensagens.</div>
           </div>
         </div>
 
@@ -117,9 +117,8 @@ export default function ConectarRobo() {
 
           <div className="card p-5 space-y-3">
             <h2 className="font-bold text-brand">Configuração manual</h2>
-            <p className="text-xs text-muted">Se o botão não funcionar, cole estes valores no popup da extensão (ícone “P” na barra do navegador).</p>
-            <Field label="Endereço do PEPPACORP" value={origin} />
-            <Field label="Chave de ingestão" value={empresa.ingest_key} />
+            <p className="text-xs text-muted">Se o botão não funcionar, cole este token no popup da extensão (ícone “P” na barra do navegador).</p>
+            <Field label="Token" value={empresa.ingest_key} />
           </div>
         </div>
       </div>

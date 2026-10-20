@@ -37,7 +37,7 @@ export function ExtensaoPonte() {
       const d = ev.data as IngestReq;
       const { empresa, ready } = state.current;
       if (!ready) return reply(d.reqId, { ok: false, error: "PEPPACORP ainda carregando" });
-      if (!empresa.ingest_key || d.key !== empresa.ingest_key) return reply(d.reqId, { ok: false, error: "chave de ingestão inválida" });
+      if (!empresa.ingest_key || d.key !== empresa.ingest_key) return reply(d.reqId, { ok: false, error: "token inválido" });
       const codigo = String(d.codigo_compra || "");
       if (!/^\d{10,}$/.test(codigo)) return reply(d.reqId, { ok: false, error: "codigo_compra inválido" });
 

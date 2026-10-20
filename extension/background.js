@@ -85,7 +85,7 @@ async function ingest(codigo, messages) {
     if (b.ok) b.via = 'ponte';
     return b;
   }
-  if (res.status === 401) return { ok: false, error: 'chave de ingestão inválida' };
+  if (res.status === 401) return { ok: false, error: 'token inválido' };
   if (res.status < 200 || res.status >= 300) return { ok: false, error: (res.data && res.data.error) || 'HTTP ' + res.status };
   return { ok: true, via: 'servidor', data: res.data || {} };
 }
@@ -229,7 +229,7 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     const server = String(req.server || '').trim().replace(/\/+$/, '');
     const key = String(req.key || '').trim();
     if (!/^https?:\/\//.test(server) || key.length < 16) {
-      sendResponse({ ok: false, error: 'Endereço do PEPPACORP ou chave inválidos.' });
+      sendResponse({ ok: false, error: 'Endereço do PEPPACORP ou token inválidos.' });
       return false;
     }
     chrome.storage.local.set({ peppa_server: server, peppa_key: key }, () => {

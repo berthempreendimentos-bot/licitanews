@@ -57,17 +57,17 @@ export default function Configuracoes() {
 
         <div className="space-y-5 lg:row-span-2">
           <div className="card p-5">
-            <h2 className="font-bold text-brand">Chave de ingestão do monitor</h2>
+            <h2 className="font-bold text-brand">Token do robô</h2>
             <p className="text-xs text-muted mt-1">
               Usada pela extensão para enviar o chat dos pregões. Ela só permite gravar mensagens: não dá acesso à sua conta.
-              Se vazar, gere outra.
+              Se vazar, gere outro.
             </p>
             <div className="mt-3 flex gap-2">
               <code className="input !bg-bg truncate text-xs">{empresa.ingest_key}</code>
               <button className="btn btn-ghost shrink-0" aria-label="Copiar" onClick={() => { void navigator.clipboard.writeText(empresa.ingest_key); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
                 <Copy size={14} /> {copied ? "Copiado" : ""}
               </button>
-              <button className="btn btn-ghost shrink-0" aria-label="Gerar nova chave" onClick={() => { if (confirm("Gerar nova chave? A antiga deixa de funcionar.")) save({ ingest_key: newId().replace(/-/g, "") }); }}>
+              <button className="btn btn-ghost shrink-0" aria-label="Gerar novo token" onClick={() => { if (confirm("Gerar novo token? O antigo deixa de funcionar.")) save({ ingest_key: newId().replace(/-/g, "") }); }}>
                 <RefreshCw size={14} />
               </button>
             </div>

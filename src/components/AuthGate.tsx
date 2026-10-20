@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail, UploadCloud, X } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { assinarTempoReal, dadosLocais, db, descartarDadosLocais, importarDadosLocais } from "@/lib/store";
+import { assinarTempoReal, db, descartarDadosLocais } from "@/lib/store";
 
 /** Sem Supabase: modo demonstração liberado (só em desenvolvimento). Com Supabase: exige login por e-mail e senha. */
 export function AuthGate({ children }: { children: React.ReactNode }) {
@@ -25,10 +25,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const uid = session?.user.id;
   useEffect(() => (uid ? assinarTempoReal(uid) : undefined), [uid]);
 
+  // Com login, dados do modo demonstração guardados no navegador não são usados: apaga.
+  useEffect(() => {
+    if (uid) descartarDadosLocais();
+  }, [uid]);
+
   if (!supabase) return process.env.NODE_ENV === "production" ? <SemConfiguracao /> : <>{children}</>;
   if (session === undefined) return <div className="p-10 text-muted text-sm">Carregando…</div>;
   if (!session) return <LoginForm />;
-  return <><ImportarDemo />{children}</>;
+  return <>{children}</>;
 }
 
 /** Em produção, sem Supabase configurado, não libera o painel sem login. */
@@ -43,57 +48,6 @@ function SemConfiguracao() {
           NEXT_PUBLIC_SUPABASE_ANON_KEY nas variáveis de ambiente e publique novamente.
         </p>
       </div>
-    </div>
-  );
-}
-
-/** Oferece copiar para a conta o que foi feito no modo demonstração (dados deste navegador). */
-function ImportarDemo() {
-  const [locais, setLocais] = useState<ReturnType<typeof dadosLocais>>([]);
-  const [estado, setEstado] = useState<"pergunta" | "importando" | "feito">("pergunta");
-  const [n, setN] = useState(0);
-  useEffect(() => setLocais(dadosLocais()), []);
-  if (!locais.length) return null;
-
-  const total = locais.reduce((s, x) => s + x.n, 0);
-  const NOMES: Record<string, string> = {
-    empresa: "dados da empresa", pregoes: "pregões monitorados", chat_messages: "mensagens de chat", alerts: "alertas",
-    propostas: "propostas", analises: "análises de edital", favoritos: "favoritos", crm_cards: "cartões do CRM",
-    radar_profiles: "perfis do radar", agenda_events: "eventos da agenda", documentos: "documentos",
-  };
-
-  return (
-    <div className="fixed bottom-4 right-4 z-50 w-[min(420px,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-4 shadow-xl">
-      {estado === "feito" ? (
-        <div className="flex items-start gap-3">
-          <UploadCloud size={20} className="mt-0.5 shrink-0 text-green-700" />
-          <div className="flex-1 text-sm"><b>{n} registros importados</b> para a sua conta.</div>
-          <button aria-label="Fechar" onClick={() => setLocais([])}><X size={16} /></button>
-        </div>
-      ) : (
-        <>
-          <div className="flex items-start gap-3">
-            <UploadCloud size={20} className="mt-0.5 shrink-0 text-brand" />
-            <div className="flex-1">
-              <div className="text-sm font-bold">Importar dados do modo demonstração?</div>
-              <p className="mt-1 text-xs text-muted">
-                Este navegador tem {total} registros feitos antes do login: {locais.map((x) => `${x.n} ${NOMES[x.colecao] ?? x.colecao}`).join(", ")}.
-                Importar copia tudo para a sua conta (inclusive a chave da extensão, que continua conectada).
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 flex justify-end gap-2">
-            <button className="btn btn-ghost !py-1.5 !text-xs" disabled={estado === "importando"}
-              onClick={() => { if (confirm("Descartar os dados do modo demonstração deste navegador?")) { descartarDadosLocais(); setLocais([]); } }}>
-              Descartar
-            </button>
-            <button className="btn btn-primary !py-1.5 !text-xs" disabled={estado === "importando"}
-              onClick={async () => { setEstado("importando"); setN(await importarDadosLocais()); descartarDadosLocais(); setEstado("feito"); }}>
-              {estado === "importando" ? "Importando…" : "Importar para minha conta"}
-            </button>
-          </div>
-        </>
-      )}
     </div>
   );
 }

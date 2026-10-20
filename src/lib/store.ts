@@ -127,26 +127,7 @@ export function assinarTempoReal(uid: string): () => void {
   return () => { void sb.removeChannel(canal); };
 }
 
-/** Quantos registros o modo demonstração deixou neste navegador (por coleção). */
-export function dadosLocais(): { colecao: CollectionName; n: number }[] {
-  if (typeof localStorage === "undefined") return [];
-  return COLECOES.map((c) => ({ colecao: c, n: readLocal(c).length })).filter((x) => x.n > 0);
-}
-
-/** Copia os dados do modo demonstração (localStorage) para a conta no Supabase. */
-export async function importarDadosLocais(): Promise<number> {
-  if (!supabase) return 0;
-  let total = 0;
-  for (const { colecao } of dadosLocais()) {
-    const recs = readLocal(colecao);
-    await persistUpsert(colecao, recs);
-    total += recs.length;
-  }
-  db.reset();
-  return total;
-}
-
-/** Depois de importar, apaga a cópia local para o aviso não aparecer de novo. */
+/** Apaga os dados do modo demonstração guardados neste navegador. */
 export function descartarDadosLocais() {
   for (const c of COLECOES) {
     try { localStorage.removeItem(LS_PREFIX + c); } catch { /* sem acesso ao armazenamento */ }

@@ -7,28 +7,19 @@ function show(ok, text) {
   $('status').textContent = text;
 }
 
-chrome.storage.local.get(['peppa_server', 'peppa_key'], function (cfg) {
-  $('server').value = cfg.peppa_server || '';
+// Configuração manual: só o token. O endereço é sempre o PEPPACORP publicado
+// (o botão "Conectar extensão" de Conectar Robô continua usando o endereço da aba).
+var SERVIDOR = 'https://licitanews.vercel.app';
+
+chrome.storage.local.get(['peppa_key'], function (cfg) {
   $('key').value = cfg.peppa_key || '';
 });
 
-// Endereços fora da lista do manifesto (ex.: o PEPPACORP publicado) pedem permissão uma vez.
-// Chamado direto no clique: o Chrome só mostra o pedido durante um gesto do usuário.
-function ensurePermission(server, cb) {
-  var origin;
-  try { origin = new URL(server).origin + '/*'; } catch (e) { cb(false); return; }
-  chrome.permissions.request({ origins: [origin] }, function (granted) { cb(!!granted); });
-}
-
 $('save').addEventListener('click', function () {
-  var server = $('server').value.trim();
   var key = $('key').value.trim();
-  ensurePermission(server, function (allowed) {
-    if (!allowed) { show(false, 'Sem permissão para acessar ' + server + '.'); return; }
-    chrome.runtime.sendMessage({ action: 'peppa_save_config', server: server, key: key }, function (resp) {
-      if (!resp || !resp.ok) { show(false, (resp && resp.error) || 'Falha ao salvar.'); return; }
-      show(true, 'Salvo. Recarregue a página de acompanhamento do Comprasnet.');
-    });
+  chrome.runtime.sendMessage({ action: 'peppa_save_config', server: SERVIDOR, key: key }, function (resp) {
+    if (!resp || !resp.ok) { show(false, (resp && resp.error) || 'Falha ao salvar.'); return; }
+    show(true, 'Salvo. Recarregue a página de acompanhamento do Comprasnet.');
   });
 });
 
