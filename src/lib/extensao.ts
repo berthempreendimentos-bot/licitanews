@@ -36,7 +36,7 @@ type Abertura = { ok: boolean; jaAberta?: boolean; viaExtensao: boolean };
  * - mostrar = true (botão "Abrir no Comprasnet"): traz para frente a aba da compra (ou abre uma visível).
  * Sem a extensão: abre numa aba nova — na hora do clique, senão o navegador bloqueia o pop-up.
  */
-export function abrirNoComprasnet(codigo: string, mostrar = false): Promise<Abertura> {
+export function abrirNoComprasnet(codigo: string, mostrar = false, janela?: number): Promise<Abertura> {
   const url = comprasnetUrl(codigo);
   if (!versaoExtensao) {
     window.open(url, "_blank", "noopener");
@@ -55,7 +55,8 @@ export function abrirNoComprasnet(codigo: string, mostrar = false): Promise<Aber
       resolve({ ok: !!ev.data.ok, jaAberta: !!ev.data.already_open, viaExtensao: true });
     }
     window.addEventListener("message", onMessage);
-    window.postMessage({ type: "PEPPA_EXT_OPEN", reqId, url, show: mostrar }, window.location.origin);
+    // janela (extensão v0.7.0+): número da janela minimizada onde a aba abre (ciclo do administrador).
+    window.postMessage({ type: "PEPPA_EXT_OPEN", reqId, url, show: mostrar, janela }, window.location.origin);
   });
 }
 

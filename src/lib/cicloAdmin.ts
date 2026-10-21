@@ -11,36 +11,40 @@ import type { CompraAdmin } from "@/app/api/admin/monitoramento/route";
  * Fica neste módulo, e não numa página, para continuar rodando enquanto o administrador navega.
  */
 
-/** Compras abertas ao mesmo tempo no Comprasnet. */
-export const TAMANHO_LOTE = 3;
+/** Cada lote abre JANELAS janelas minimizadas com ABAS_POR_JANELA compras cada. */
+export const JANELAS = 3;
+export const ABAS_POR_JANELA = 3;
+export const TAMANHO_LOTE = JANELAS * ABAS_POR_JANELA;
 /** Tempo máximo para uma compra importar o chat antes de passar para a próxima. */
 export const TEMPO_LIMITE_MS = 5 * 60000;
 /** A compra precisa responder (portal carregado e logado) em até este tempo; senão é pulada. */
 const TEMPO_RESPOSTA_MS = 60000;
-/** Pausa entre um ciclo e o próximo. */
-export const PAUSA_CICLOS_MS = 60000;
 /** De quanto em quanto tempo procura compras novas cadastradas pelos usuários. */
 export const VERIFICAR_NOVAS_MS = 20000;
 /** Versão mínima da extensão (avisa o fim da captura e reenvia o estado de abas já abertas). */
-const VERSAO_MINIMA = "0.6.0";
+const VERSAO_MINIMA = "0.7.0";
 
 export type EstadoCiclo = "fila" | "abrindo" | "capturando" | "captcha" | "concluido" | "incompleto" | "encerrado" | "nao_monitorada" | "sem_resposta" | "tempo" | "erro" | "parado";
 export type Situacao = { estado: EstadoCiclo; synced?: number; detalhe?: string };
 
+/**
+ * rodando: robô ligado. concluido: a fila do ciclo acabou (não começa outro); o robô segue ligado
+ * só para atualizar na hora as compras novas que os usuários cadastrarem.
+ */
 export type CicloEstado = {
   compras: CompraAdmin[];
   recentes: string[];
   situacao: Record<string, Situacao>;
   rodando: boolean;
-  ciclo: number;
+  concluido: boolean;
+  lote: number;
   carregando: boolean;
   erro: string;
   aviso: string;
-  repetir: boolean;
 };
 
 let estado: CicloEstado = {
-  compras: [], recentes: [], situacao: {}, rodando: false, ciclo: 0, carregando: false, erro: "", aviso: "", repetir: true,
+  compras: [], recentes: [], situacao: {}, rodando: false, concluido: false, lote: 0, carregando: false, erro: "", aviso: "",
 };
 const ouvintes = new Set<() => void>();
 function set(parcial: Partial<CicloEstado>) {
@@ -124,8 +128,16 @@ export function vigiar() {
   vigia = setInterval(() => void carregar(true), VERIFICAR_NOVAS_MS);
 }
 
-/** Abre a compra, espera a extensão avisar que importou o chat e fecha a aba (se foi aberta aqui). */
-async function atualizar(codigo: string) {
+// As aberturas saem uma de cada vez: a primeira aba de cada janela é quem cria a janela.
+let aberturas: Promise<unknown> = Promise.resolve();
+function abrirEmOrdem(codigo: string, janela: number) {
+  const r = aberturas.then(() => abrirNoComprasnet(codigo, false, janela));
+  aberturas = r.catch(() => {});
+  return r;
+}
+
+/** Abre a compra na janela indicada, espera a extensão avisar que importou o chat e fecha a aba (se foi aberta aqui). */
+async function atualizar(codigo: string, janela: number) {
   marcar(codigo, { estado: "abrindo" });
   const fim: { s: Situacao | null; respondeu: boolean } = { s: null, respondeu: false };
   // Escuta antes de abrir: o aviso pode chegar logo depois da abertura.
@@ -135,7 +147,7 @@ async function atualizar(codigo: string) {
     else if (e !== "registrado") fim.s = { estado: e, synced };
   });
   try {
-    const r = await abrirNoComprasnet(codigo, false);
+    const r = await abrirEmOrdem(codigo, janela);
     if (!r.ok) return marcar(codigo, { estado: "erro", detalhe: "a extensão não abriu a compra" });
     // Já estava aberta: os avisos dela já saíram, então pede o estado de novo.
     if (r.jaAberta) pedirEstadoCaptura(codigo);
@@ -166,12 +178,18 @@ function proxima(): string | null {
   return null;
 }
 
-/** Até TAMANHO_LOTE compras abertas ao mesmo tempo; cada vaga liberada pega a próxima da fila. */
+/**
+ * Lotes de JANELAS janelas × ABAS_POR_JANELA abas. O próximo lote só abre quando todas as compras
+ * do lote atual terminaram (cada aba fecha ao terminar; a janela some com a última aba).
+ */
 async function rodarFila() {
-  async function vaga() {
-    for (let c = proxima(); c && !parar; c = proxima()) await atualizar(c);
+  while (!parar) {
+    const lote: string[] = [];
+    for (let c = proxima(); c; c = lote.length < TAMANHO_LOTE ? proxima() : null) lote.push(c);
+    if (!lote.length) return;
+    set({ lote: estado.lote + 1 });
+    await Promise.all(lote.map((c, i) => atualizar(c, Math.floor(i / ABAS_POR_JANELA))));
   }
-  await Promise.all(Array.from({ length: TAMANHO_LOTE }, vaga));
 }
 
 export async function iniciar() {
@@ -182,23 +200,20 @@ export async function iniciar() {
   if (!versaoMinima(versao, VERSAO_MINIMA)) return set({ aviso: `A extensão está na v${versao}. O ciclo precisa da v${VERSAO_MINIMA} ou mais nova: baixe de novo em Conectar Robô.` });
   parar = false;
   prioridade = [];
-  set({ rodando: true });
+  set({ rodando: true, concluido: false, lote: 0 });
   try {
-    for (let n = 1; !parar; n++) {
-      set({ ciclo: n });
-      await carregar(true);
-      // Mesma ordem da tabela: novas primeiro, depois as mais desatualizadas.
-      const ordem = [...estado.recentes.filter((c) => ativas.has(c)), ...[...ativas].filter((c) => !estado.recentes.includes(c))];
-      fila = ordem;
-      set({ situacao: Object.fromEntries(ordem.map((c) => [c, { estado: "fila" as EstadoCiclo }])) });
-      await rodarFila();
-      if (parar || !estado.repetir) break;
-      // Pausa entre ciclos: compra nova cadastrada nesse meio-tempo é atualizada na hora.
-      const fimPausa = Date.now() + PAUSA_CICLOS_MS;
-      while (!parar && Date.now() < fimPausa) {
-        await esperar(fimPausa - Date.now(), () => prioridade.length > 0);
-        if (prioridade.length) await rodarFila();
-      }
+    await carregar(true);
+    // Mesma ordem da tabela: novas primeiro, depois as mais desatualizadas.
+    const ordem = [...estado.recentes.filter((c) => ativas.has(c)), ...[...ativas].filter((c) => !estado.recentes.includes(c))];
+    fila = ordem;
+    set({ situacao: Object.fromEntries(ordem.map((c) => [c, { estado: "fila" as EstadoCiclo }])) });
+    await rodarFila();
+    if (parar) return;
+    // Fila acabou: não começa outro ciclo. Compra nova cadastrada depois disso é atualizada na hora.
+    set({ concluido: true });
+    while (!parar) {
+      await esperar(Infinity, () => prioridade.length > 0);
+      if (prioridade.length) await rodarFila();
     }
   } finally {
     set({ rodando: false });
@@ -210,17 +225,13 @@ export function pararCiclo() {
   parar = true;
 }
 
-export function setRepetir(repetir: boolean) {
-  set({ repetir });
-}
-
 /** Ao sair da conta: para o ciclo e a vigia e esquece a lista. */
 export function encerrarSessao() {
   parar = true;
   if (vigia) clearInterval(vigia);
   vigia = null;
   conhecidas = null;
-  set({ compras: [], recentes: [], situacao: {}, ciclo: 0, erro: "", aviso: "" });
+  set({ compras: [], recentes: [], situacao: {}, concluido: false, lote: 0, erro: "", aviso: "" });
 }
 
 // ===== Início automático (preferência deste navegador) =====

@@ -93,7 +93,8 @@ async function ingest(codigo, messages) {
 // Abre o acompanhamento da compra numa janela minimizada e sem som, reaproveitada
 // para todas as compras. Se a compra já estiver aberta em alguma aba, não abre de novo.
 // show = true (botão "Abrir no Comprasnet"): mostra a aba para a pessoa ver o portal.
-async function openComprasnet(url, show) {
+// janela = 0, 1, 2… (ciclo do administrador): cada número tem a sua janela minimizada.
+async function openComprasnet(url, show, janela) {
   let u;
   try { u = new URL(url); } catch (e) { return { ok: false, error: 'link inválido' }; }
   const code = u.searchParams.get('compra');
@@ -112,17 +113,18 @@ async function openComprasnet(url, show) {
     await chrome.windows.update(tab.windowId, { focused: true });
     return { ok: true, shown: true };
   }
-  const { peppa_window } = await chrome.storage.session.get('peppa_window');
-  if (peppa_window) {
+  const chave = Number.isInteger(janela) && janela >= 0 ? 'peppa_window_' + janela : 'peppa_window';
+  const salvo = (await chrome.storage.session.get(chave))[chave];
+  if (salvo) {
     try {
-      await chrome.windows.get(peppa_window);
-      const tab = await chrome.tabs.create({ windowId: peppa_window, url: url, active: false });
+      await chrome.windows.get(salvo);
+      const tab = await chrome.tabs.create({ windowId: salvo, url: url, active: false });
       await chrome.tabs.update(tab.id, { muted: true });
       return { ok: true };
-    } catch (e) { /* janela fechada pelo usuário: cria outra */ }
+    } catch (e) { /* janela fechada (pelo usuário ou ao fechar a última aba): cria outra */ }
   }
   const w = await chrome.windows.create({ url: url, state: 'minimized' });
-  await chrome.storage.session.set({ peppa_window: w.id });
+  await chrome.storage.session.set({ [chave]: w.id });
   if (w.tabs && w.tabs[0]) await chrome.tabs.update(w.tabs[0].id, { muted: true });
   return { ok: true };
 }
@@ -281,7 +283,7 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     return false;
   }
   if (req.action === 'peppa_open') {
-    openComprasnet(String(req.url || ''), !!req.show).then(sendResponse).catch((e) => sendResponse({ ok: false, error: String(e) }));
+    openComprasnet(String(req.url || ''), !!req.show, req.janela).then(sendResponse).catch((e) => sendResponse({ ok: false, error: String(e) }));
     return true;
   }
   if (req.action === 'peppa_silence' || req.action === 'peppa_alarm_finished') {

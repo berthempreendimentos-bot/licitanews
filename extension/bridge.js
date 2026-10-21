@@ -41,7 +41,7 @@
       return;
     }
     if (d.type === 'PEPPA_EXT_OPEN') {
-      chrome.runtime.sendMessage({ action: 'peppa_open', url: d.url, show: !!d.show }, function (resp) {
+      chrome.runtime.sendMessage({ action: 'peppa_open', url: d.url, show: !!d.show, janela: d.janela }, function (resp) {
         window.postMessage({ type: 'PEPPA_EXT_OPEN_RESULT', reqId: d.reqId, ok: !!(resp && resp.ok), already_open: !!(resp && resp.already_open), shown: !!(resp && resp.shown) }, window.location.origin);
       });
       return;

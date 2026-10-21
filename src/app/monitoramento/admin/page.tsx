@@ -6,7 +6,7 @@ import { AlertTriangle, ArrowLeft, Loader2, Play, RefreshCw, ShieldCheck, Square
 import { Empty, PageHeader, StatCard } from "@/components/ui";
 import { SomenteAdmin } from "@/components/SomenteAdmin";
 import {
-  carregar, iniciar, inicioAutomatico, PAUSA_CICLOS_MS, pararCiclo, setInicioAutomatico, setRepetir,
+  ABAS_POR_JANELA, carregar, iniciar, inicioAutomatico, JANELAS, pararCiclo, setInicioAutomatico,
   TAMANHO_LOTE, TEMPO_LIMITE_MS, useCiclo, VERIFICAR_NOVAS_MS, type EstadoCiclo,
 } from "@/lib/cicloAdmin";
 import { dataBR } from "@/lib/format";
@@ -36,7 +36,7 @@ export default function Page() {
 
 function MonitoramentoAdmin() {
   // O ciclo roda em segundo plano (src/lib/cicloAdmin.ts): esta página só mostra e controla.
-  const { compras, recentes, situacao, rodando, ciclo, carregando, erro, aviso, repetir } = useCiclo();
+  const { compras, recentes, situacao, rodando, concluido, lote, carregando, erro, aviso } = useCiclo();
   const [auto, setAuto] = useState(inicioAutomatico);
 
   const valores = Object.values(situacao);
@@ -67,8 +67,8 @@ function MonitoramentoAdmin() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         <StatCard label="Compras monitoradas" value={compras.length} />
-        <StatCard label="Ciclo" value={rodando ? `${ciclo}º · ${feitos}/${valores.length}` : ciclo ? `${ciclo}º concluído` : "—"} />
-        <StatCard label="Abertas agora" value={emAndamento} hint={`máximo ${TAMANHO_LOTE}`} />
+        <StatCard label="Ciclo" value={rodando ? (concluido ? "Concluído" : `Lote ${lote} · ${feitos}/${valores.length}`) : lote ? "Parado" : "—"} hint={concluido ? "aguardando compras novas" : undefined} />
+        <StatCard label="Abertas agora" value={emAndamento} hint={`máximo ${TAMANHO_LOTE} (${JANELAS} janelas × ${ABAS_POR_JANELA} abas)`} />
         <StatCard label="Mensagens novas" value={novas} accent={novas > 0} />
       </div>
 
@@ -79,14 +79,12 @@ function MonitoramentoAdmin() {
             <input type="checkbox" checked={auto} onChange={(e) => { setAuto(e.target.checked); setInicioAutomatico(e.target.checked); }} />
             Iniciar sozinho ao entrar no PEPPACORP
           </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={repetir} onChange={(e) => setRepetir(e.target.checked)} />
-            Repetir o ciclo ({PAUSA_CICLOS_MS / 60000} min de pausa entre ciclos)
-          </label>
         </div>
         <p className="text-xs text-muted">
           Todas as licitações que os usuários adicionarem no Monitoramento são capturadas por este robô, e as mensagens vão para cada usuário.
-          Compras novas entram sozinhas na frente da fila (verificação a cada {VERIFICAR_NOVAS_MS / 1000}s).
+          Cada lote abre {JANELAS} janelas com {ABAS_POR_JANELA} abas; o próximo lote só abre quando o atual termina.
+          O ciclo passa uma vez pela fila e para; compras novas entram sozinhas na frente da fila (verificação a cada {VERIFICAR_NOVAS_MS / 1000}s),
+          inclusive depois que o ciclo terminou.
           O ciclo continua rodando enquanto você navega pelo PEPPACORP; deixe uma aba do PEPPACORP e o Comprasnet (logado) abertos neste navegador.
           Cada compra tem até {TEMPO_LIMITE_MS / 60000} min para importar o chat.
         </p>
