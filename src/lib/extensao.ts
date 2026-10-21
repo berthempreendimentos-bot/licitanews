@@ -58,3 +58,40 @@ export function abrirNoComprasnet(codigo: string, mostrar = false): Promise<Aber
     window.postMessage({ type: "PEPPA_EXT_OPEN", reqId, url, show: mostrar }, window.location.origin);
   });
 }
+
+/** Fecha no navegador as abas da compra no Comprasnet (pela extensão). */
+export function fecharNoComprasnet(codigo: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const reqId = `close-${codigo}-${Date.now()}`;
+    const timer = setTimeout(() => { window.removeEventListener("message", onMessage); resolve(false); }, 5000);
+    function onMessage(ev: MessageEvent) {
+      if (ev.source !== window || ev.data?.type !== "PEPPA_EXT_CLOSE_RESULT" || ev.data.reqId !== reqId) return;
+      clearTimeout(timer);
+      window.removeEventListener("message", onMessage);
+      resolve(!!ev.data.ok);
+    }
+    window.addEventListener("message", onMessage);
+    window.postMessage({ type: "PEPPA_EXT_CLOSE", reqId, codigo_compra: codigo }, window.location.origin);
+  });
+}
+
+export type EstadoCaptura = "registrado" | "captcha" | "concluido" | "incompleto" | "encerrado" | "nao_monitorada";
+
+/** Pede à aba já aberta da compra que avise de novo o estado da captura (extensão v0.6.0+). */
+export function pedirEstadoCaptura(codigo: string) {
+  window.postMessage({ type: "PEPPA_EXT_CAPTURE_RESET", codigo_compra: codigo }, window.location.origin);
+}
+
+/**
+ * Escuta o andamento da captura de uma compra (avisado pela extensão a partir da v0.5.0).
+ * "registrado" e "captcha" são intermediários; os demais encerram a espera.
+ * Devolve a função que para de escutar.
+ */
+export function escutarCaptura(codigo: string, aoMudar: (estado: EstadoCaptura, synced: number) => void): () => void {
+  function onMessage(ev: MessageEvent) {
+    if (ev.source !== window || ev.data?.type !== "PEPPA_EXT_CAPTURE" || ev.data.codigo_compra !== codigo) return;
+    aoMudar(ev.data.estado as EstadoCaptura, Number(ev.data.synced) || 0);
+  }
+  window.addEventListener("message", onMessage);
+  return () => window.removeEventListener("message", onMessage);
+}

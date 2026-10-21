@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Plus, Trash2, X, Square, Play, ExternalLink, Building2, MapPin, BellRing, Search } from "lucide-react";
+import { Plus, Trash2, X, Square, Play, ExternalLink, Building2, MapPin, BellRing, Search, ShieldCheck } from "lucide-react";
 import { Empty, PageHeader, StatCard } from "@/components/ui";
 import { corEvento, EventoTag } from "@/components/EventoTag";
 import { db, newId, useCollection, useEmpresa } from "@/lib/store";
 import { codigoCompraFromLink, comprasnetUrl, itemDoTexto, orgaoPregao, parseCodigoCompra, pncpFromLink, rotuloRemetente, tituloPregao } from "@/lib/monitor";
 import { abrirNoComprasnet } from "@/lib/extensao";
+import { supabase } from "@/lib/supabase";
 import { retroSearch } from "@/lib/ingestLocal";
 import { dataBR, nowIso } from "@/lib/format";
 import type { ChatMessage, Pregao } from "@/lib/types";
@@ -241,6 +242,10 @@ export default function Monitoramento() {
   const { items: pregoes } = useCollection("pregoes");
   const { items: msgs } = useCollection("chat_messages");
   const { items: alerts } = useCollection("alerts");
+  const [admin, setAdmin] = useState(false);
+  useEffect(() => {
+    supabase?.auth.getUser().then(({ data }) => setAdmin(data.user?.app_metadata?.role === "admin"));
+  }, []);
   const [link, setLink] = useState("");
   const [err, setErr] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
@@ -312,7 +317,12 @@ export default function Monitoramento() {
   return (
     <>
       <PageHeader title="Monitoramento" subtitle="Chat do pregoeiro do Comprasnet: alertas de prazos, convocações e menções à sua empresa"
-        actions={<Link href="/monitoramento/alarme" className="btn btn-primary"><BellRing size={14} /> Alarme</Link>} />
+        actions={
+          <>
+            {admin && <Link href="/monitoramento/admin" className="btn btn-ghost"><ShieldCheck size={14} /> Ciclo (admin)</Link>}
+            <Link href="/monitoramento/alarme" className="btn btn-primary"><BellRing size={14} /> Alarme</Link>
+          </>
+        } />
 
       <form onSubmit={add} className="card p-4 mb-4 flex flex-col sm:flex-row gap-2">
         <input className="input" placeholder="Link de acompanhamento do Comprasnet (…?compra=98412305941402025) ou link do edital no PNCP" value={link} onChange={(e) => setLink(e.target.value)} />

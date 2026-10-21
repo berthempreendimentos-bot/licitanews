@@ -237,6 +237,38 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     });
     return true;
   }
+  if (req.action === 'peppa_capture_state') {
+    // Andamento da captura de uma compra: repassa às abas do PEPPACORP (ciclo do administrador).
+    chrome.tabs.query({}).then((tabs) => {
+      for (const t of tabs) {
+        if (ehPeppacorp(t.url)) chrome.tabs.sendMessage(t.id, { action: 'peppa_capture_state', codigo_compra: req.codigo_compra, estado: req.estado, synced: req.synced }).catch(() => {});
+      }
+    });
+    return false;
+  }
+  if (req.action === 'peppa_capture_reset') {
+    // Pede às abas da compra que avisem de novo o estado da captura.
+    // Aba com o script antigo (extensão atualizada depois que ela abriu) não responde: recarrega.
+    const code = String(req.codigo_compra || '');
+    chrome.tabs.query({}).then((tabs) => {
+      for (const t of tabs) {
+        if (!t.url || t.url.indexOf('cnetmobile.estaleiro.serpro.gov.br') === -1 || t.url.indexOf('compra=' + code) === -1) continue;
+        chrome.tabs.sendMessage(t.id, { action: 'peppa_capture_reset', codigo_compra: code }).catch(() => chrome.tabs.reload(t.id).catch(() => {}));
+      }
+    });
+    return false;
+  }
+  if (req.action === 'peppa_close') {
+    // Fecha as abas da compra (o ciclo do administrador fecha as que ele mesmo abriu).
+    const code = String(req.codigo_compra || '');
+    if (!/^\d{10,}$/.test(code)) { sendResponse({ ok: false }); return false; }
+    chrome.tabs.query({}).then(async (tabs) => {
+      const ids = tabs.filter((t) => t.url && t.url.indexOf('cnetmobile.estaleiro.serpro.gov.br') !== -1 && t.url.indexOf('compra=' + code) !== -1).map((t) => t.id);
+      if (ids.length) await chrome.tabs.remove(ids).catch(() => {});
+      sendResponse({ ok: true, closed: ids.length });
+    });
+    return true;
+  }
   if (req.action === 'peppa_captcha' && sender.tab) {
     // O portal pediu verificação humana: mostra a aba para a pessoa resolver.
     chrome.windows.update(sender.tab.windowId, { state: 'normal', focused: true }).catch(() => {});

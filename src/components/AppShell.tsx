@@ -6,15 +6,17 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, Search, Radar, Star, KanbanSquare, CalendarDays, FilePlus2, Gavel,
   MessageSquareText, PlugZap, LineChart, ScrollText, FolderOpen, Bell, BarChart3, Settings, Menu, X,
-  PanelLeftClose, PanelLeftOpen,
+  PanelLeftClose, PanelLeftOpen, UsersRound,
 } from "lucide-react";
 import { AuthGate } from "./AuthGate";
 import { AlertasDocumentos } from "./AlertasDocumentos";
 import { ExtensaoPonte } from "./ExtensaoPonte";
 import { BotaoSair } from "./BotaoSair";
 import { useCollection, useEmpresa } from "@/lib/store";
+import { useAdmin } from "@/lib/useAdmin";
 
-type NavItem = { href: string; label: string; icon: React.ElementType; tag?: string };
+/** admin: só aparece para administradores. */
+type NavItem = { href: string; label: string; icon: React.ElementType; tag?: string; admin?: boolean };
 
 const NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -24,15 +26,16 @@ const NAV: NavItem[] = [
   { href: "/crm", label: "CRM", icon: KanbanSquare },
   { href: "/agenda", label: "Agenda", icon: CalendarDays },
   { href: "/propostas", label: "Propostas", icon: FilePlus2 },
-  { href: "/disputar", label: "Robô de Lances", icon: Gavel, tag: "Aguarde" },
+  { href: "/disputar", label: "Robô de Lances", icon: Gavel, tag: "Aguarde", admin: true },
   { href: "/monitoramento", label: "Monitoramento", icon: MessageSquareText },
-  { href: "/conectar-robo", label: "Conectar Robô", icon: PlugZap },
+  { href: "/conectar-robo", label: "Conectar Robô", icon: PlugZap, admin: true },
   { href: "/inteligencia-mercado", label: "Inteligência de Mercado", icon: LineChart },
   { href: "/atas-registro-preco", label: "Atas de Registro", icon: ScrollText },
   { href: "/documentos", label: "Documentos", icon: FolderOpen },
   { href: "/alertas", label: "Alertas", icon: Bell },
   { href: "/relatorios", label: "Relatórios", icon: BarChart3, tag: "Aguarde" },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
+  { href: "/administracao", label: "Administração", icon: UsersRound, admin: true },
 ];
 
 function Logo({ collapsed }: { collapsed?: boolean }) {
@@ -53,11 +56,12 @@ function Sidebar({ onNavigate, collapsed }: { onNavigate?: () => void; collapsed
   const pathname = usePathname();
   const { items: alerts } = useCollection("alerts");
   const unread = alerts.filter((a) => !a.lido).length;
+  const admin = useAdmin();
   return (
     <div className="flex h-full flex-col bg-brand py-5">
       <Logo collapsed={collapsed} />
       <nav className={`mt-6 flex-1 overflow-y-auto space-y-0.5 ${collapsed ? "px-2" : "px-3"}`}>
-        {NAV.map((item) => {
+        {NAV.filter((item) => !item.admin || admin).map((item) => {
           const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           const Icon = item.icon;
           return (

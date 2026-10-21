@@ -41,6 +41,7 @@
   var lastLiveRefresh = 0;
   var badge = null;
   var registeredAt = 0;
+  var reportado = {};      // estado da captura já avisado ao PEPPACORP (ciclo do administrador)
 
   function detectCompra() {
     try {
@@ -94,10 +95,18 @@
     }
   }
 
+  // Avisa o PEPPACORP (página do ciclo do administrador) do andamento desta compra, uma vez por estado.
+  function reportar(estado) {
+    if (reportado[estado]) return;
+    reportado[estado] = true;
+    try { chrome.runtime.sendMessage({ action: 'peppa_capture_state', codigo_compra: compra, estado: estado, synced: synced }); } catch (e) {}
+  }
+
   function handleState(d) {
     if (d.encerrado) { stop('Monitoramento encerrado no PEPPACORP', '#94a3b8'); return false; }
     if (d.not_monitored) {
       registered = false;
+      reportar('nao_monitorada');
       setBadge('Compra ' + compra + ' não cadastrada no Monitoramento', '#f59e0b');
       return false;
     }
@@ -121,6 +130,7 @@
   }
 
   function stop(text, color) {
+    reportar('encerrado');
     stopped = true;
     registered = false;
     walk = null;
@@ -273,6 +283,7 @@
     var visibleNow = captchaVisible();
     if (visibleNow) {
       setBadge('Resolva a verificação (captcha) do portal para a captura continuar', '#f59e0b');
+      reportar('captcha');
       if (Date.now() - lastCaptchaAlert > 60000) {
         lastCaptchaAlert = Date.now();
         try { chrome.runtime.sendMessage({ action: 'peppa_captcha', codigo_compra: compra }); } catch (e) {}
@@ -372,6 +383,7 @@
       setBadge(liveText(), null);
     } else {
       historyRetryAt = Date.now() + 60000;
+      reportar('incompleto');
       setBadge('Histórico incompleto (' + reason + ') — nova tentativa em 1 min; ao vivo continua', '#ef4444');
     }
   }
@@ -416,12 +428,15 @@
   function tick() {
     if (stopped || checkCaptcha()) return;
     if (!registered) return;
+    reportar('registrado');
     if (!ensurePanel()) return;
     if (walk) { walkStep(); return; }
     if (!historyDone) {
       if (Date.now() >= historyRetryAt) startHistory();
       return;
     }
+    // Histórico importado e tudo confirmado pelo servidor: compra atualizada.
+    if (!queue.length && !sending) reportar('concluido');
     // Ao vivo: as mensagens novas ficam na última página.
     if (Date.now() - lastLiveRefresh > LIVE_REFRESH_MS) {
       lastLiveRefresh = Date.now();
@@ -449,6 +464,14 @@
     setBadge('Conectando à compra ' + compra + '…', '#f59e0b');
     heartbeat();
   }
+
+  chrome.runtime.onMessage.addListener(function (req, sender, sendResponse) {
+    if (req.action !== 'peppa_capture_reset' || req.codigo_compra !== compra) return false;
+    reportado = {};
+    if (stopped) reportar('encerrado');
+    sendResponse({ ok: true });
+    return false;
+  });
 
   function start() {
     if (!document.body) { setTimeout(start, 300); return; }

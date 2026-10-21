@@ -1,13 +1,22 @@
 import { NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
+import { ehAdmin } from "@/lib/adminServidor";
 import { alertasDaEmpresa, classifyMessage, disparosPara, enriquecer, findMention, normalizeRawMessage, recente, watchTerms } from "@/lib/monitor";
-import type { Alert, ChatMessage, Disparo, Empresa, Pregao } from "@/lib/types";
+import type { Alert, AlertasChat, ChatMessage, Disparo, Empresa, Pregao } from "@/lib/types";
+
+type Linha = { user_id: string; collection: string; id: string; data: unknown };
+type Mencao = { termo_encontrado: string; texto: string };
+
+/** Usuário sem dados da empresa: só os eventos do chat geram alerta (sem termos vigiados). */
+const EMPRESA_VAZIA = { cnpj: "", razao_social: "", palavras_chave: [] as string[] };
 
 /**
  * Recebe mensagens do chat capturadas pela extensão (etapa 2).
  * Header: x-ingest-key (chave da empresa, em Configurações) — NÃO é o login do usuário.
  * Body: { codigo_compra: string, messages: object[] }  (até 50 por chamada)
  * Resposta: { synced, mentions, not_monitored?, encerrado? }
+ * Chave de um administrador: a captura vale para todos os usuários que monitoram a compra.
  */
 export async function POST(req: Request) {
   const sb = serviceClient();
@@ -31,17 +40,57 @@ export async function POST(req: Request) {
   const userId = emp.user_id as string;
   const empresa = emp.data as Empresa;
 
-  const { data: pregRows } = await sb
-    .from("records")
-    .select("data")
-    .eq("user_id", userId)
-    .eq("collection", "pregoes")
-    .eq("data->>codigo_compra", codigo);
-  const pregao = pregRows?.[0]?.data as Pregao | undefined;
-  if (!pregao) return NextResponse.json({ ok: true, not_monitored: true, synced: 0 });
-  if (pregao.status === "Encerrado") return NextResponse.json({ ok: true, encerrado: true, synced: 0 });
+  let consulta = sb.from("records").select("user_id, data").eq("collection", "pregoes").eq("data->>codigo_compra", codigo);
+  if (!(await ehAdmin(sb, userId))) consulta = consulta.eq("user_id", userId);
+  const { data: pregRows } = await consulta;
+  // Um pregão por usuário (o primeiro, como antes).
+  const porUsuario = new Map<string, Pregao>();
+  for (const r of pregRows ?? []) if (!porUsuario.has(r.user_id as string)) porUsuario.set(r.user_id as string, r.data as Pregao);
+  if (!porUsuario.size) return NextResponse.json({ ok: true, not_monitored: true, synced: 0 });
+  const ativos = [...porUsuario].filter(([, p]) => p.status !== "Encerrado");
+  if (!ativos.length) return NextResponse.json({ ok: true, encerrado: true, synced: 0 });
+
+  // Empresa de cada usuário (termos vigiados e configuração dos alertas).
+  const empresas = new Map<string, Empresa>([[userId, empresa]]);
+  const outros = ativos.map(([u]) => u).filter((u) => u !== userId);
+  if (outros.length) {
+    const { data } = await sb.from("records").select("user_id, data").eq("collection", "empresa").in("user_id", outros);
+    for (const r of data ?? []) empresas.set(r.user_id as string, r.data as Empresa);
+  }
 
   const msgs = raw.map((r) => normalizeRawMessage(codigo, r)).filter((m): m is Omit<ChatMessage, "evento"> => !!m);
+  const now = new Date().toISOString();
+  const rows: Linha[] = [];
+  let resposta: { synced: number; mentions: Mencao[]; disparos: Disparo[]; alertas: AlertasChat } = {
+    synced: 0, mentions: [], disparos: [], alertas: alertasDaEmpresa(empresa),
+  };
+  let maiorSynced = 0;
+  for (const [uid, pregao] of ativos) {
+    const { rows: linhas, ...r } = await processar(sb, uid, empresas.get(uid) ?? EMPRESA_VAZIA, pregao, codigo, msgs, now);
+    rows.push(...linhas);
+    maiorSynced = Math.max(maiorSynced, r.synced);
+    // Menções e alarme só de quem enviou: o administrador não toca alarme pelas compras dos outros.
+    if (uid === userId) resposta = r;
+  }
+  if (!porUsuario.has(userId) || porUsuario.get(userId)!.status === "Encerrado") resposta.synced = maiorSynced;
+
+  if (rows.length) {
+    const { error } = await sb.from("records").upsert(rows);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true, ...resposta });
+}
+
+/** Mensagens novas, alertas e situação do pregão de um usuário. */
+async function processar(
+  sb: SupabaseClient,
+  userId: string,
+  empresa: { cnpj: string; razao_social: string; palavras_chave: string[]; alertas_chat?: AlertasChat },
+  pregao: Pregao,
+  codigo: string,
+  msgs: Omit<ChatMessage, "evento">[],
+  now: string,
+) {
   const ids = msgs.map((m) => m.id);
   const { data: existing } = ids.length
     ? await sb.from("records").select("id, data").eq("user_id", userId).eq("collection", "chat_messages").in("id", ids)
@@ -50,9 +99,8 @@ export async function POST(req: Request) {
   const fresh = msgs.filter((m) => !known.has(m.id));
 
   const terms = watchTerms(empresa);
-  const mentions: { termo_encontrado: string; texto: string }[] = [];
-  const rows: { user_id: string; collection: string; id: string; data: unknown }[] = [];
-  const now = new Date().toISOString();
+  const mentions: Mencao[] = [];
+  const rows: Linha[] = [];
   // Mensagens já salvas que voltaram com remetente/item: completa sem gerar alerta de novo.
   for (const m of msgs) {
     const old = known.get(m.id);
@@ -94,9 +142,5 @@ export async function POST(req: Request) {
     };
     rows.push({ user_id: userId, collection: "pregoes", id: pregao.id, data: updatedPregao });
   }
-  if (!rows.length) return NextResponse.json({ ok: true, synced: 0, mentions, disparos, alertas: cfg });
-
-  const { error } = await sb.from("records").upsert(rows);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, synced: fresh.length, mentions, disparos, alertas: cfg });
+  return { rows, synced: fresh.length, mentions, disparos, alertas: cfg };
 }

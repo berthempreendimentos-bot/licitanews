@@ -46,6 +46,16 @@
       });
       return;
     }
+    if (d.type === 'PEPPA_EXT_CAPTURE_RESET') {
+      chrome.runtime.sendMessage({ action: 'peppa_capture_reset', codigo_compra: d.codigo_compra });
+      return;
+    }
+    if (d.type === 'PEPPA_EXT_CLOSE') {
+      chrome.runtime.sendMessage({ action: 'peppa_close', codigo_compra: d.codigo_compra }, function (resp) {
+        window.postMessage({ type: 'PEPPA_EXT_CLOSE_RESULT', reqId: d.reqId, ok: !!(resp && resp.ok) }, window.location.origin);
+      });
+      return;
+    }
     if (d.type === 'PEPPA_EXT_SILENCE') { chrome.runtime.sendMessage({ action: 'peppa_silence' }); return; }
     if (d.type === 'PEPPA_EXT_TEST_ALARM') { chrome.runtime.sendMessage({ action: 'peppa_test_alarm', alertas: d.alertas }); return; }
     if (d.type === 'PEPPA_EXT_ALARM_STATUS') {
@@ -61,6 +71,10 @@
   });
 
   chrome.runtime.onMessage.addListener(function (req, sender, sendResponse) {
+    if (req.action === 'peppa_capture_state') {
+      window.postMessage({ type: 'PEPPA_EXT_CAPTURE', codigo_compra: req.codigo_compra, estado: req.estado, synced: req.synced }, window.location.origin);
+      return false;
+    }
     if (req.action === 'peppa_alarm_state') {
       window.postMessage({ type: 'PEPPA_EXT_ALARM', on: !!req.on }, window.location.origin);
       return false;
