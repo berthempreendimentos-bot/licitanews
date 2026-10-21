@@ -11,6 +11,7 @@ import {
 import { AuthGate } from "./AuthGate";
 import { AlertasDocumentos } from "./AlertasDocumentos";
 import { ExtensaoPonte } from "./ExtensaoPonte";
+import { CicloAdminAuto } from "./CicloAdminAuto";
 import { BotaoSair } from "./BotaoSair";
 import { useCollection, useEmpresa } from "@/lib/store";
 import { useAdmin } from "@/lib/useAdmin";
@@ -123,6 +124,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <AuthGate>
       <AlertasDocumentos />
       <ExtensaoPonte />
+      <CicloAdminAuto />
       <div className="flex min-h-screen">
         <aside className={`hidden lg:block shrink-0 fixed inset-y-0 left-0 transition-[width] ${collapsed ? "w-16" : "w-64"}`}>
           <Sidebar collapsed={collapsed} />

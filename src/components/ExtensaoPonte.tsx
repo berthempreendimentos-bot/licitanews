@@ -7,6 +7,7 @@ import { db, useCollection, useEmpresa } from "@/lib/store";
 import { normalizeRawMessage } from "@/lib/monitor";
 import { ingestLocal } from "@/lib/ingestLocal";
 import { abrirNoComprasnet, detectarExtensao } from "@/lib/extensao";
+import { useAdmin } from "@/lib/useAdmin";
 import type { ChatMessage } from "@/lib/types";
 
 type IngestReq = { type: "PEPPA_EXT_INGEST"; reqId: string; key: string; codigo_compra: string; messages: unknown[] };
@@ -30,9 +31,11 @@ export function ExtensaoPonte() {
 
   // Ao abrir o PEPPACORP (ex.: depois de reiniciar o computador), reabre no Comprasnet, numa janela
   // minimizada, as compras monitoradas que não estão abertas, para a captura continuar sozinha.
+  // Administrador: o robô do ciclo já cuida de todas as compras (as dele e as dos usuários).
+  const admin = useAdmin();
   const reaberto = useRef(false);
   useEffect(() => {
-    if (!pregoes.ready || reaberto.current) return;
+    if (!pregoes.ready || admin !== false || reaberto.current) return;
     reaberto.current = true;
     const ativas = pregoes.items.filter((p) => p.status !== "Encerrado").map((p) => p.codigo_compra);
     if (!ativas.length) return;
@@ -42,7 +45,7 @@ export function ExtensaoPonte() {
       // Uma de cada vez: a extensão reaproveita a mesma janela minimizada para todas.
       for (const codigo of ativas) await abrirNoComprasnet(codigo, false);
     })();
-  }, [pregoes.ready, pregoes.items]);
+  }, [pregoes.ready, pregoes.items, admin]);
 
   useEffect(() => {
     function reply(reqId: string, result: unknown) {

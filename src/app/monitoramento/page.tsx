@@ -287,7 +287,9 @@ export default function Monitoramento() {
       status: "Aguardando captura", mensagens: 0, ultima_captura: null, created_at: nowIso(),
     });
     setLink("");
-    void abrir(codigo, false);
+    // Usuário comum: quem captura é o robô do administrador (entra na frente da fila dele).
+    if (admin) void abrir(codigo, false);
+    else setInfo(`Compra ${codigo} adicionada. O robô do PEPPACORP vai capturar as mensagens e elas aparecem aqui sozinhas.`);
   }
 
   const alertasNovos = (codigo: string) => alerts.filter((a) => !a.lido && a.ref === codigo).length;
