@@ -6,6 +6,7 @@ import { CheckCircle2, Copy, Download, PlugZap, AlertTriangle } from "lucide-rea
 import { PageHeader } from "@/components/ui";
 import { useEmpresa } from "@/lib/store";
 import { isDemo } from "@/lib/supabase";
+import { useAdmin } from "@/lib/useAdmin";
 
 type ExtInfo = { version: string; server: string | null; keyTail: string | null };
 
@@ -43,6 +44,7 @@ function Field({ label, value }: { label: string; value: string }) {
 export default function ConectarRobo() {
   const { empresa } = useEmpresa();
   const ext = useExtensao();
+  const admin = useAdmin();
   const [origin, setOrigin] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => setOrigin(window.location.origin), []);
@@ -61,6 +63,18 @@ export default function ConectarRobo() {
   return (
     <>
       <PageHeader title="Conectar Robô" subtitle="Extensão do navegador que captura o chat do pregoeiro no Comprasnet" />
+
+      {admin === false && (
+        <div className="card p-4 mb-5 flex gap-2 text-sm">
+          <AlertTriangle size={16} className="shrink-0 mt-0.5 text-warn" />
+          <span>
+            A captura das mensagens é feita pelo robô do <b>administrador</b> do PEPPACORP: as licitações que você adiciona em
+            Monitoramento são capturadas por ele e as mensagens aparecem para você sozinhas. Aqui a extensão serve para o <b>alarme</b>:
+            ela avisa com pop-up e som quando chega mensagem importante nas suas licitações (configure em Monitoramento → Alarme).
+            Basta instalar e conectar; não é preciso abrir o Comprasnet.
+          </span>
+        </div>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div className="card p-5">

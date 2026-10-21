@@ -17,7 +17,8 @@ const EMPRESA_VAZIA = { cnpj: "", razao_social: "", palavras_chave: [] as string
  * Body: { codigo_compra: string, messages: object[] }  (até 50 por chamada)
  * Resposta: { synced, mentions, mensagens, not_monitored?, encerrado? }
  * mensagens: quantas o PEPPACORP já tem da compra (a extensão decide se faz a verificação rápida).
- * Chave de um administrador: a captura vale para todos os usuários que monitoram a compra.
+ * Só a chave de um administrador captura, e a captura vale para todos os usuários que monitoram a compra.
+ * Chave de outro usuário: { somente_admin: true } (a extensão dele não grava nada).
  */
 export async function POST(req: Request) {
   const sb = serviceClient();
@@ -41,9 +42,9 @@ export async function POST(req: Request) {
   const userId = emp.user_id as string;
   const empresa = emp.data as Empresa;
 
-  let consulta = sb.from("records").select("user_id, data").eq("collection", "pregoes").eq("data->>codigo_compra", codigo);
-  if (!(await ehAdmin(sb, userId))) consulta = consulta.eq("user_id", userId);
-  const { data: pregRows } = await consulta;
+  // Só a extensão do administrador captura (e grava para todos os usuários que monitoram a compra).
+  if (!(await ehAdmin(sb, userId))) return NextResponse.json({ ok: true, somente_admin: true, synced: 0 });
+  const { data: pregRows } = await sb.from("records").select("user_id, data").eq("collection", "pregoes").eq("data->>codigo_compra", codigo);
   // Um pregão por usuário (o primeiro, como antes).
   const porUsuario = new Map<string, Pregao>();
   for (const r of pregRows ?? []) if (!porUsuario.has(r.user_id as string)) porUsuario.set(r.user_id as string, r.data as Pregao);
@@ -70,8 +71,14 @@ export async function POST(req: Request) {
     const { rows: linhas, ...r } = await processar(sb, uid, empresas.get(uid) ?? EMPRESA_VAZIA, pregao, codigo, msgs, now);
     rows.push(...linhas);
     maiorSynced = Math.max(maiorSynced, r.synced);
-    // Menções e alarme só de quem enviou: o administrador não toca alarme pelas compras dos outros.
+    // Alarme de quem enviou vai na resposta. Os dos outros usuários ficam guardados e a extensão
+    // de cada um busca em /api/monitoramento/avisos (o administrador não toca alarme pelos outros).
     if (uid === userId) resposta = r;
+    else {
+      r.disparos.forEach((d, i) => rows.push({
+        user_id: uid, collection: "disparos", id: `disparo:${codigo}:${Date.now()}:${i}`, data: { ...d, codigo_compra: codigo },
+      }));
+    }
   }
   if (!porUsuario.has(userId) || porUsuario.get(userId)!.status === "Encerrado") resposta.synced = maiorSynced;
   // O menor entre os usuários: quem acabou de cadastrar a compra ainda precisa do histórico inteiro.

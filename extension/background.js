@@ -187,6 +187,26 @@ function avisar(codigo, data) {
   if (cfg.som) startAlarm(cfg).catch(() => {});
 }
 
+// ===== Alarme para todos os usuários =====
+// Quem captura é a extensão do administrador. A de cada usuário busca aqui, a cada 30 s,
+// os avisos das licitações dele e toca o alarme / mostra o pop-up.
+chrome.alarms.create('peppa-avisos', { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'peppa-avisos') buscarAvisos().catch(() => {}); });
+
+async function buscarAvisos() {
+  const cfg = await getConfig();
+  if (!cfg.peppa_server || !cfg.peppa_key) return;
+  const { peppa_avisos_desde: desde } = await chrome.storage.local.get('peppa_avisos_desde');
+  const url = cfg.peppa_server.replace(/\/+$/, '') + '/api/monitoramento/avisos' + (desde ? '?desde=' + encodeURIComponent(desde) : '');
+  const r = await fetch(url, { headers: { 'x-ingest-key': cfg.peppa_key } });
+  if (!r.ok) return;
+  const d = await r.json();
+  if (d.desde) await chrome.storage.local.set({ peppa_avisos_desde: d.desde });
+  const porCompra = {};
+  for (const x of d.disparos || []) (porCompra[x.codigo_compra] = porCompra[x.codigo_compra] || []).push(x);
+  for (const codigo of Object.keys(porCompra)) avisar(codigo, { disparos: porCompra[codigo], alertas: d.alertas });
+}
+
 // Clicar no pop-up (ou no botão) silencia; o clique no corpo também leva para o PEPPACORP.
 chrome.notifications.onButtonClicked.addListener(() => { stopAlarm(); });
 chrome.notifications.onClicked.addListener(async (id) => {
@@ -234,8 +254,10 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
       sendResponse({ ok: false, error: 'Endereço do PEPPACORP ou token inválidos.' });
       return false;
     }
+    // Outra conta/endereço: os avisos recomeçam a partir de agora.
+    chrome.storage.local.remove('peppa_avisos_desde');
     chrome.storage.local.set({ peppa_server: server, peppa_key: key }, () => {
-      registrarPonte(server).catch(() => {}).finally(() => sendResponse({ ok: true }));
+      registrarPonte(server).catch(() => {}).finally(() => { sendResponse({ ok: true }); buscarAvisos().catch(() => {}); });
     });
     return true;
   }

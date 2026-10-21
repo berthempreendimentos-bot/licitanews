@@ -36,7 +36,7 @@ export default function Page() {
 
 function MonitoramentoAdmin() {
   // O ciclo roda em segundo plano (src/lib/cicloAdmin.ts): esta página só mostra e controla.
-  const { compras, recentes, situacao, rodando, concluido, lote, carregando, erro, aviso } = useCiclo();
+  const { compras, recentes, situacao, rodando, ciclo, lote, carregando, erro, aviso } = useCiclo();
   const [auto, setAuto] = useState(inicioAutomatico);
 
   const valores = Object.values(situacao);
@@ -67,7 +67,7 @@ function MonitoramentoAdmin() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         <StatCard label="Compras monitoradas" value={compras.length} />
-        <StatCard label="Ciclo" value={rodando ? (concluido ? "Concluído" : `Lote ${lote} · ${feitos}/${valores.length}`) : lote ? "Parado" : "—"} hint={concluido ? "aguardando compras novas" : undefined} />
+        <StatCard label="Ciclo" value={rodando ? `${ciclo}º · ${feitos}/${valores.length}` : ciclo ? "Parado" : "—"} hint={rodando && lote ? `lote ${lote} · recomeça sozinho ao terminar` : undefined} />
         <StatCard label="Abertas agora" value={emAndamento} hint={`máximo ${TAMANHO_LOTE} (${JANELAS} janelas × ${ABAS_POR_JANELA} abas)`} />
         <StatCard label="Mensagens novas" value={novas} accent={novas > 0} />
       </div>
@@ -83,8 +83,8 @@ function MonitoramentoAdmin() {
         <p className="text-xs text-muted">
           Todas as licitações que os usuários adicionarem no Monitoramento são capturadas por este robô, e as mensagens vão para cada usuário.
           Cada lote abre {JANELAS} janelas com {ABAS_POR_JANELA} abas; o próximo lote só abre quando o atual termina.
-          O ciclo passa uma vez pela fila e para; compras novas entram sozinhas na frente da fila (verificação a cada {VERIFICAR_NOVAS_MS / 1000}s),
-          inclusive depois que o ciclo terminou.
+          Ao terminar a fila, um novo ciclo começa sozinho, sem pausa, até você clicar em Parar.
+          Compras novas entram sozinhas na frente da fila (verificação a cada {VERIFICAR_NOVAS_MS / 1000}s).
           O ciclo continua rodando enquanto você navega pelo PEPPACORP; deixe uma aba do PEPPACORP e o Comprasnet (logado) abertos neste navegador.
           Cada compra tem até {TEMPO_LIMITE_MS / 60000} min para importar o chat.
         </p>

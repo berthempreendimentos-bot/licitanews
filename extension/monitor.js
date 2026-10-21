@@ -109,6 +109,7 @@
   }
 
   function handleState(d) {
+    if (d.somente_admin) { stop('Captura feita pelo administrador do PEPPACORP — o alarme continua ligado', '#94a3b8'); return false; }
     if (d.encerrado) { stop('Monitoramento encerrado no PEPPACORP', '#94a3b8'); return false; }
     if (d.not_monitored) {
       registered = false;

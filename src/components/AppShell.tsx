@@ -29,7 +29,7 @@ const NAV: NavItem[] = [
   { href: "/propostas", label: "Propostas", icon: FilePlus2 },
   { href: "/disputar", label: "Robô de Lances", icon: Gavel, tag: "Aguarde", admin: true },
   { href: "/monitoramento", label: "Monitoramento", icon: MessageSquareText },
-  { href: "/conectar-robo", label: "Conectar Robô", icon: PlugZap, admin: true },
+  { href: "/conectar-robo", label: "Conectar Robô", icon: PlugZap },
   { href: "/inteligencia-mercado", label: "Inteligência de Mercado", icon: LineChart },
   { href: "/atas-registro-preco", label: "Atas de Registro", icon: ScrollText },
   { href: "/documentos", label: "Documentos", icon: FolderOpen },

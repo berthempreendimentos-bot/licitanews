@@ -6,8 +6,7 @@ import { BellRing, VolumeX } from "lucide-react";
 import { db, useCollection, useEmpresa } from "@/lib/store";
 import { normalizeRawMessage } from "@/lib/monitor";
 import { ingestLocal } from "@/lib/ingestLocal";
-import { abrirNoComprasnet, detectarExtensao } from "@/lib/extensao";
-import { useAdmin } from "@/lib/useAdmin";
+import { detectarExtensao } from "@/lib/extensao";
 import type { ChatMessage } from "@/lib/types";
 
 type IngestReq = { type: "PEPPA_EXT_INGEST"; reqId: string; key: string; codigo_compra: string; messages: unknown[] };
@@ -28,24 +27,6 @@ export function ExtensaoPonte() {
 
   // Detecta a extensão logo ao abrir o app (o botão "Abrir no Comprasnet" precisa saber na hora do clique).
   useEffect(() => { void detectarExtensao(); }, []);
-
-  // Ao abrir o PEPPACORP (ex.: depois de reiniciar o computador), reabre no Comprasnet, numa janela
-  // minimizada, as compras monitoradas que não estão abertas, para a captura continuar sozinha.
-  // Administrador: o robô do ciclo já cuida de todas as compras (as dele e as dos usuários).
-  const admin = useAdmin();
-  const reaberto = useRef(false);
-  useEffect(() => {
-    if (!pregoes.ready || admin !== false || reaberto.current) return;
-    reaberto.current = true;
-    const ativas = pregoes.items.filter((p) => p.status !== "Encerrado").map((p) => p.codigo_compra);
-    if (!ativas.length) return;
-    void (async () => {
-      // Sem a extensão não abre nada: abas soltas fora de um clique seriam bloqueadas como pop-up.
-      if (!(await detectarExtensao(3000))) return;
-      // Uma de cada vez: a extensão reaproveita a mesma janela minimizada para todas.
-      for (const codigo of ativas) await abrirNoComprasnet(codigo, false);
-    })();
-  }, [pregoes.ready, pregoes.items, admin]);
 
   useEffect(() => {
     function reply(reqId: string, result: unknown) {

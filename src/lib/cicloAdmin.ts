@@ -22,21 +22,18 @@ const TEMPO_RESPOSTA_MS = 60000;
 /** De quanto em quanto tempo procura compras novas cadastradas pelos usuários. */
 export const VERIFICAR_NOVAS_MS = 20000;
 /** Versão mínima da extensão (avisa o fim da captura e reenvia o estado de abas já abertas). */
-const VERSAO_MINIMA = "0.8.0";
+const VERSAO_MINIMA = "1.0.0";
 
 export type EstadoCiclo = "fila" | "abrindo" | "capturando" | "captcha" | "concluido" | "incompleto" | "encerrado" | "nao_monitorada" | "sem_resposta" | "tempo" | "erro" | "parado";
 export type Situacao = { estado: EstadoCiclo; synced?: number; detalhe?: string };
 
-/**
- * rodando: robô ligado. concluido: a fila do ciclo acabou (não começa outro); o robô segue ligado
- * só para atualizar na hora as compras novas que os usuários cadastrarem.
- */
+/** rodando: robô ligado. ciclo: volta atual pela fila (ao terminar uma, começa a próxima sem pausa). */
 export type CicloEstado = {
   compras: CompraAdmin[];
   recentes: string[];
   situacao: Record<string, Situacao>;
   rodando: boolean;
-  concluido: boolean;
+  ciclo: number;
   lote: number;
   carregando: boolean;
   erro: string;
@@ -44,7 +41,7 @@ export type CicloEstado = {
 };
 
 let estado: CicloEstado = {
-  compras: [], recentes: [], situacao: {}, rodando: false, concluido: false, lote: 0, carregando: false, erro: "", aviso: "",
+  compras: [], recentes: [], situacao: {}, rodando: false, ciclo: 0, lote: 0, carregando: false, erro: "", aviso: "",
 };
 const ouvintes = new Set<() => void>();
 function set(parcial: Partial<CicloEstado>) {
@@ -200,20 +197,22 @@ export async function iniciar() {
   if (!versaoMinima(versao, VERSAO_MINIMA)) return set({ aviso: `A extensão está na v${versao}. O ciclo precisa da v${VERSAO_MINIMA} ou mais nova: baixe de novo em Conectar Robô.` });
   parar = false;
   prioridade = [];
-  set({ rodando: true, concluido: false, lote: 0 });
+  set({ rodando: true, ciclo: 0, lote: 0 });
   try {
-    await carregar(true);
-    // Mesma ordem da tabela: novas primeiro, depois as mais desatualizadas.
-    const ordem = [...estado.recentes.filter((c) => ativas.has(c)), ...[...ativas].filter((c) => !estado.recentes.includes(c))];
-    fila = ordem;
-    set({ situacao: Object.fromEntries(ordem.map((c) => [c, { estado: "fila" as EstadoCiclo }])) });
-    await rodarFila();
-    if (parar) return;
-    // Fila acabou: não começa outro ciclo. Compra nova cadastrada depois disso é atualizada na hora.
-    set({ concluido: true });
-    while (!parar) {
-      await esperar(Infinity, () => prioridade.length > 0);
-      if (prioridade.length) await rodarFila();
+    // Ao terminar uma volta pela fila, começa a próxima na hora, até alguém clicar em Parar.
+    for (let n = 1; !parar; n++) {
+      set({ ciclo: n, lote: 0 });
+      await carregar(true);
+      // Mesma ordem da tabela: novas primeiro, depois as mais desatualizadas.
+      const ordem = [...estado.recentes.filter((c) => ativas.has(c)), ...[...ativas].filter((c) => !estado.recentes.includes(c))];
+      fila = ordem;
+      set({ situacao: Object.fromEntries(ordem.map((c) => [c, { estado: "fila" as EstadoCiclo }])) });
+      // Nenhuma compra monitorada: espera alguém cadastrar uma (ou a próxima verificação da lista).
+      if (!ordem.length && !prioridade.length) {
+        await esperar(VERIFICAR_NOVAS_MS, () => prioridade.length > 0);
+        continue;
+      }
+      await rodarFila();
     }
   } finally {
     set({ rodando: false });
@@ -231,7 +230,7 @@ export function encerrarSessao() {
   if (vigia) clearInterval(vigia);
   vigia = null;
   conhecidas = null;
-  set({ compras: [], recentes: [], situacao: {}, concluido: false, lote: 0, erro: "", aviso: "" });
+  set({ compras: [], recentes: [], situacao: {}, ciclo: 0, lote: 0, erro: "", aviso: "" });
 }
 
 // ===== Início automático (preferência deste navegador) =====

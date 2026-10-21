@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
   "name": "PEPPACORP Monitor",
-  "version": "0.8.0",
+  "version": "1.0.0",
   "description": "Captura o chat do pregoeiro no Comprasnet e envia ao PEPPACORP LICITA (alertas de menções, prazos e convocações).",
   "permissions": [
     "storage",
     "tabs",
     "notifications",
     "scripting",
-    "offscreen"
+    "offscreen",
+    "alarms"
   ],
   "host_permissions": [
     "https://*.gov.br/*",
