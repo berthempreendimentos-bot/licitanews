@@ -101,38 +101,30 @@ function MonitoramentoAdmin() {
 
       {compras.length > 0 && (
         <div className="card overflow-x-auto">
-          <table className="w-full text-sm">
+          {/* Uma linha por compra: órgão, código e detalhes do erro ficam na dica (passar o mouse). */}
+          <table className="w-full table-fixed text-sm">
             <thead className="text-left text-[11px] uppercase tracking-wider text-muted">
               <tr className="border-b border-border">
-                <th className="p-3">Compra</th>
-                <th className="p-3">Órgão</th>
-                <th className="p-3 text-center">Usuários</th>
-                <th className="p-3">Última captura</th>
-                <th className="p-3">Situação</th>
+                <th className="px-3 py-2">Pregão</th>
+                <th className="px-3 py-2 w-36">Última captura</th>
+                <th className="px-3 py-2 w-56">Situação</th>
               </tr>
             </thead>
             <tbody>
               {compras.map((c) => {
                 const s = situacao[c.codigo_compra];
                 const r = s ? ROTULO[s.estado] : null;
+                const local = [c.municipio, c.uf].filter(Boolean).join("/");
                 return (
                   <tr key={c.codigo_compra} className="border-b border-border last:border-0">
-                    <td className="p-3">
-                      <div className="font-semibold">
-                        {c.titulo}
-                        {recentes.includes(c.codigo_compra) && <span className="badge ml-2 bg-accent-soft text-accent">Nova</span>}
-                      </div>
-                      <div className="text-xs text-muted font-mono">{c.codigo_compra}</div>
+                    <td className="px-3 py-1.5 truncate font-medium" title={[c.orgao, local, c.codigo_compra].filter(Boolean).join(" · ")}>
+                      {recentes.includes(c.codigo_compra) && <span className="badge mr-1.5 bg-accent-soft text-accent">Nova</span>}
+                      {c.titulo}
                     </td>
-                    <td className="p-3 text-xs text-muted">
-                      {c.orgao || "—"}
-                      {c.municipio && <div>{c.municipio}{c.uf ? `/${c.uf}` : ""}</div>}
-                    </td>
-                    <td className="p-3 text-center">{c.usuarios}</td>
-                    <td className="p-3 text-xs text-muted">{c.ultima_captura ? dataBR(c.ultima_captura, true) : "Nunca"}</td>
-                    <td className="p-3">
+                    <td className="px-3 py-1.5 whitespace-nowrap text-xs text-muted">{c.ultima_captura ? dataBR(c.ultima_captura, true) : "Nunca"}</td>
+                    <td className="px-3 py-1.5 whitespace-nowrap">
                       {r ? (
-                        <span className={`badge ${r.cor}`}>
+                        <span className={`badge ${r.cor}`} title={s!.detalhe}>
                           {(s!.estado === "abrindo" || s!.estado === "capturando") && <Loader2 size={11} className="animate-spin" />}
                           {r.texto}
                           {s!.estado === "concluido" && (s!.synced ? ` · ${s!.synced} nova(s)` : " · sem novidades")}
@@ -140,7 +132,6 @@ function MonitoramentoAdmin() {
                       ) : (
                         <span className="text-xs text-muted">—</span>
                       )}
-                      {s?.detalhe && <div className="mt-1 text-xs text-danger">{s.detalhe}</div>}
                     </td>
                   </tr>
                 );
