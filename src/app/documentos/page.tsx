@@ -272,8 +272,9 @@ function Analises({ aberta, setAberta }: { aberta: string | null; setAberta: (id
           {atual.pncpId && <Link className="btn btn-primary" href={`/propostas?pncp=${encodeURIComponent(atual.pncpId)}`}><FilePlus2 size={14} /> Criar proposta</Link>}
           <button className="btn btn-ghost" onClick={() => imprimirRelatorio(nomeDoRelatorio(atual.resultado, atual.titulo))}>Imprimir / PDF</button>
         </div>
-        <AnaliseView r={atual.resultado} />
-        <RelatorioEdital r={atual.resultado} titulo={atual.titulo} fonte={atual.fonte} data={dataBR(atual.created_at, true)} />
+        <AnaliseView r={atual.resultado} escolhidos={atual.lotes_escolhidos ?? []}
+          onEscolher={(lotes) => db.update("analises", atual.id, { lotes_escolhidos: lotes })} />
+        <RelatorioEdital r={atual.resultado} titulo={atual.titulo} fonte={atual.fonte} data={dataBR(atual.created_at, true)} escolhidos={atual.lotes_escolhidos ?? []} />
       </>
     );
   }

@@ -178,6 +178,8 @@ export type AnaliseEdital = {
   fonte: string; // nome do arquivo ou id do PNCP
   pncpId: string | null;
   resultado: import("./edital").ResultadoEdital;
+  /** Lotes que a empresa decidiu disputar (nomes como em resultado.itens[].lote). */
+  lotes_escolhidos?: string[];
   created_at: string;
 };
 

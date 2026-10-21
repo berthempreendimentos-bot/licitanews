@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ResultadoEdital } from "@/lib/edital";
+import { brl, lotesDoEdital, totalDoItem, type ItemEdital } from "@/lib/lotes";
 
 /**
  * Relatório minimalista da análise de edital, só para "Imprimir / PDF".
@@ -38,6 +39,29 @@ function Itens({ lista }: { lista: string[] }) {
   );
 }
 
+/** Itens (agrupados por lote quando houver), com unitário e total. */
+function TabelaItensRel({ grupos }: { grupos: { nome: string; total: string; itens: ItemEdital[] }[] }) {
+  return (
+    <table className="rel-tab">
+      <thead><tr><th>Nº</th><th>Descrição</th><th className="rel-dir">Qtd.</th><th>Unid.</th><th className="rel-dir">Unitário</th><th className="rel-dir">Total</th></tr></thead>
+      <tbody>
+        {grupos.flatMap((gr) => [
+          ...(gr.nome ? [<tr key={`l-${gr.nome}`} className="rel-lote"><td colSpan={5}>{gr.nome}</td><td className="rel-dir">{gr.total}</td></tr>] : []),
+          ...gr.itens.map((it, i) => {
+            const t = totalDoItem(it);
+            return (
+              <tr key={`${gr.nome}-${i}`}>
+                <td>{it.numero}</td><td>{it.descricao}</td><td className="rel-dir">{it.quantidade}</td><td>{it.unidade}</td>
+                <td className="rel-dir">{vazio(it.valor_estimado) ? "—" : it.valor_estimado}</td><td className="rel-dir">{t != null ? brl(t) : "—"}</td>
+              </tr>
+            );
+          }),
+        ])}
+      </tbody>
+    </table>
+  );
+}
+
 /** "Dispensa de Licitação 023/2026 - PREFEITURA MUNICIPAL DE AURELINO LEAL" (sem barras: vira nome de arquivo). */
 export function nomeDoRelatorio(r: ResultadoEdital, titulo: string) {
   const g = r.dados_gerais;
@@ -61,7 +85,8 @@ export function imprimirRelatorio(nome: string) {
   window.print();
 }
 
-type Props = { r: ResultadoEdital; titulo: string; fonte: string; data: string };
+/** escolhidos: lotes que a empresa vai disputar (o relatório destaca e lista só os itens deles). */
+type Props = { r: ResultadoEdital; titulo: string; fonte: string; data: string; escolhidos?: string[] };
 
 export function RelatorioEdital(props: Props) {
   const [montado, setMontado] = useState(false);
@@ -71,8 +96,11 @@ export function RelatorioEdital(props: Props) {
 }
 
 /** O relatório em si (separado do portal para poder ser gerado fora da página). */
-export function RelatorioConteudo({ r, titulo, fonte, data }: Props) {
+export function RelatorioConteudo({ r, titulo, fonte, data, escolhidos = [] }: Props) {
   const g = r.dados_gerais;
+  const lotes = lotesDoEdital(r);
+  const lotesItens = escolhidos.length ? lotes.filter((l) => escolhidos.includes(l.nome)) : lotes;
+  const totalEscolhido = lotes.filter((l) => escolhidos.includes(l.nome)).reduce((s, l) => s + (l.total ?? 0), 0);
   const riscos = [...(r.riscos ?? [])].sort((a, b) => ["alta", "media", "baixa"].indexOf(a.gravidade) - ["alta", "media", "baixa"].indexOf(b.gravidade));
   const hab: [string, string[]][] = [
     ["Jurídica", r.habilitacao.juridica], ["Fiscal e trabalhista", r.habilitacao.fiscal_trabalhista],
@@ -174,17 +202,33 @@ export function RelatorioConteudo({ r, titulo, fonte, data }: Props) {
         <div className="rel-bloco"><h3 className="rel-h3">Penalidades</h3><Itens lista={r.execucao.penalidades} /></div>
       </div>
 
-      {r.itens?.length > 0 && (
+      {lotes.length > 0 ? (
         <>
-          <T>Itens ({r.itens.length})</T>
+          <T>Lotes ({lotes.length})</T>
           <table className="rel-tab">
-            <thead><tr><th>Nº</th><th>Descrição</th><th className="rel-dir">Qtd.</th><th>Unid.</th><th className="rel-dir">Estimado</th></tr></thead>
+            <thead><tr><th>Lote</th><th className="rel-dir">Itens</th><th className="rel-dir">Total estimado</th><th className="rel-dir">Participar</th></tr></thead>
             <tbody>
-              {r.itens.map((it, i) => (
-                <tr key={i}><td>{it.numero}</td><td>{it.descricao}</td><td className="rel-dir">{it.quantidade}</td><td>{it.unidade}</td><td className="rel-dir">{vazio(it.valor_estimado) ? "—" : it.valor_estimado}</td></tr>
-              ))}
+              {lotes.map((l) => {
+                const sim = escolhidos.includes(l.nome);
+                return (
+                  <tr key={l.nome} className={sim ? "rel-escolhido" : ""}>
+                    <td>{l.nome}</td><td className="rel-dir">{l.itens.length}</td><td className="rel-dir">{l.totalTexto}</td>
+                    <td className="rel-dir">{sim ? "✓ Sim" : escolhidos.length ? "Não" : "—"}</td>
+                  </tr>
+                );
+              })}
+              {escolhidos.length > 0 && (
+                <tr className="rel-total"><td>Total dos lotes escolhidos</td><td /><td className="rel-dir">{brl(totalEscolhido)}</td><td /></tr>
+              )}
             </tbody>
           </table>
+          <T>{escolhidos.length ? "Itens dos lotes escolhidos" : `Itens (${r.itens.length})`}</T>
+          <TabelaItensRel grupos={lotesItens.map((l) => ({ nome: l.nome, total: l.totalTexto, itens: l.itens }))} />
+        </>
+      ) : r.itens?.length > 0 && (
+        <>
+          <T>Itens ({r.itens.length})</T>
+          <TabelaItensRel grupos={[{ nome: "", total: "", itens: r.itens }]} />
         </>
       )}
 

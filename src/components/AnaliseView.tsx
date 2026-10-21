@@ -4,6 +4,8 @@ import {
   AlertTriangle, Banknote, CalendarClock, CheckSquare, FileCheck2, FileText, Gavel, ListChecks, Package, Scale, Timer, Truck, Users,
 } from "lucide-react";
 import type { ResultadoEdital } from "@/lib/edital";
+import { lotesDoEdital } from "@/lib/lotes";
+import { LotesEdital } from "./LotesEdital";
 
 const vazio = (v?: string) => !v || /^n[ãa]o informado$/i.test(v.trim());
 
@@ -80,7 +82,8 @@ const SECOES: [string, string][] = [
 ];
 
 /** Exibe o resultado estruturado da análise de edital. */
-export function AnaliseView({ r }: { r: ResultadoEdital }) {
+export function AnaliseView({ r, escolhidos = [], onEscolher }: { r: ResultadoEdital; escolhidos?: string[]; onEscolher?: (lotes: string[]) => void }) {
+  const temLotes = lotesDoEdital(r).length > 0;
   const g = r.dados_gerais;
   const riscos = [...(r.riscos ?? [])].sort((a, b) => ["alta", "media", "baixa"].indexOf(a.gravidade) - ["alta", "media", "baixa"].indexOf(b.gravidade));
   const riscosAltos = riscos.filter((x) => x.gravidade === "alta").length;
@@ -106,7 +109,7 @@ export function AnaliseView({ r }: { r: ResultadoEdital }) {
         <nav className="flex flex-wrap gap-1.5 p-3 print:hidden" aria-label="Seções da análise">
           {SECOES.filter(([id]) => id !== "itens" || r.itens?.length).map(([id, nome]) => (
             <a key={id} href={`#${id}`} className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted hover:border-brand hover:text-brand">
-              {nome}{id === "riscos" && riscosAltos > 0 && <span className="ml-1 rounded-full bg-red-600 px-1.5 text-[10px] text-white">{riscosAltos}</span>}
+              {id === "itens" && temLotes ? "Lotes" : nome}{id === "riscos" && riscosAltos > 0 && <span className="ml-1 rounded-full bg-red-600 px-1.5 text-[10px] text-white">{riscosAltos}</span>}
             </a>
           ))}
         </nav>
@@ -248,30 +251,7 @@ export function AnaliseView({ r }: { r: ResultadoEdital }) {
         </Secao>
       </div>
 
-      {r.itens?.length > 0 && (
-        <Secao id="itens" titulo={`Itens (${r.itens.length})`} icon={Package} className="[&>div]:p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-bg/60 text-left text-[11px] uppercase tracking-wider text-muted">
-                  <th className="px-4 py-2">Nº</th><th className="px-4 py-2">Descrição</th><th className="px-4 py-2 text-right">Qtd.</th><th className="px-4 py-2">Unid.</th><th className="px-4 py-2 text-right">Estimado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {r.itens.map((it, i) => (
-                  <tr key={i} className="border-b border-border last:border-0 align-top break-inside-avoid">
-                    <td className="px-4 py-2.5"><span className="grid h-6 min-w-6 place-items-center rounded-md bg-bg px-1 text-xs font-bold">{it.numero}</span></td>
-                    <td className="px-4 py-2.5 font-medium leading-relaxed">{it.descricao}</td>
-                    <td className="px-4 py-2.5 text-right whitespace-nowrap tabular-nums">{it.quantidade}</td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-muted">{it.unidade}</td>
-                    <td className="px-4 py-2.5 text-right whitespace-nowrap tabular-nums text-muted">{vazio(it.valor_estimado) ? "—" : it.valor_estimado}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Secao>
-      )}
+      <LotesEdital r={r} escolhidos={escolhidos} onEscolher={onEscolher} />
 
       <Secao id="checklist" titulo="Checklist para participar" icon={ListChecks} extra={<span className="text-xs font-normal text-muted">{r.checklist?.length ?? 0} passos</span>}>
         <ol className="grid gap-3 md:grid-cols-2">

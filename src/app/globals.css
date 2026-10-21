@@ -140,6 +140,9 @@ body {
 .rel-tab tr { break-inside: avoid; }
 .rel-tab tr.rel-urgente td { background: var(--rel-vermelho-claro); }
 .rel-tab tr.rel-urgente td:first-child { color: var(--rel-vermelho); border-left: 2pt solid var(--rel-vermelho); }
+.rel-tab tr.rel-lote td { background: var(--rel-azul-claro); color: var(--rel-navy); font-weight: 800; border-top: 1pt solid var(--rel-azul); }
+.rel-tab tr.rel-escolhido td { background: var(--rel-verde-claro); color: var(--rel-verde); font-weight: 700; }
+.rel-tab tr.rel-total td { font-weight: 800; border-top: 1pt solid var(--rel-navy); }
 .rel-w40 { width: 40%; font-weight: 600; }
 .rel-w25 { width: 22%; font-weight: 600; color: var(--rel-navy); }
 .rel-dir { text-align: right; white-space: nowrap; }

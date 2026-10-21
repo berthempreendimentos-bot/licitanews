@@ -22,7 +22,10 @@ export type ResultadoEdital = {
     permite_consorcio: string;
     registro_de_precos: string;
   };
-  itens: { numero: string; descricao: string; quantidade: string; unidade: string; valor_estimado: string }[];
+  /** lote e valor_total chegaram depois: análises antigas não têm. valor_estimado = valor unitário. */
+  itens: { numero: string; descricao: string; quantidade: string; unidade: string; valor_estimado: string; valor_total?: string; lote?: string }[];
+  /** Lotes/grupos do edital com o total informado (vazio quando o edital não divide em lotes). */
+  lotes?: { nome: string; valor_total: string }[];
   habilitacao: {
     juridica: string[];
     fiscal_trabalhista: string[];
@@ -54,7 +57,8 @@ const SCHEMA = obj({
     valor_estimado: str, data_abertura_sessao: str, portal: str, exclusivo_me_epp: str, permite_consorcio: str,
     registro_de_precos: str,
   }),
-  itens: { type: "array", items: obj({ numero: str, descricao: str, quantidade: str, unidade: str, valor_estimado: str }) },
+  itens: { type: "array", items: obj({ lote: str, numero: str, descricao: str, quantidade: str, unidade: str, valor_estimado: str, valor_total: str }) },
+  lotes: { type: "array", items: obj({ nome: str, valor_total: str }) },
   habilitacao: obj({ juridica: strArr, fiscal_trabalhista: strArr, economico_financeira: strArr, tecnica: strArr }),
   declaracoes: strArr,
   prazos: { type: "array", items: obj({ evento: str, quando: str }) },
@@ -73,7 +77,12 @@ const SYSTEM = `Você é um analista sênior de licitações públicas brasileir
 Leia o edital e os anexos enviados e preencha o JSON pedido, em português.
 - Extraia apenas o que está nos documentos. Quando a informação não existir, use "Não informado" (ou lista vazia). Não invente datas, valores nem exigências.
 - Em "pagina", indique a página ou o item/cláusula do edital onde a informação está (ex.: "p. 12, item 8.3"), quando for possível identificar.
-- "itens": liste todos os itens/lotes com quantidade, unidade e valor estimado, se houver.
+- "itens": liste TODOS os itens do edital/termo de referência, sem pular nem resumir a lista, com quantidade e unidade.
+  - "lote": se o edital divide os itens em lotes ou grupos, o nome do lote como está no edital (ex.: "LOTE 01 - ELETRODOMÉSTICOS"), repetido em cada item do lote; sem lotes, "".
+  - "numero": o número do item como aparece no edital (dentro do lote, quando houver).
+  - "descricao": o produto e as especificações principais, em até 250 caracteres.
+  - "valor_estimado": valor UNITÁRIO estimado (ou mediana) em reais, ex.: "R$ 599,00"; "valor_total": valor total do item (quantidade × unitário), ex.: "R$ 8.985,00". Sem valor no edital: "Não informado".
+- "lotes": cada lote/grupo com o "valor_total" informado no edital (ex.: "R$ 448.368,65"); edital sem lotes: lista vazia.
 - "habilitacao": cada exigência em uma linha objetiva (ex.: "Índice de Liquidez Geral ≥ 1,0", "Atestado de fornecimento de 30% do quantitativo").
 - "riscos": pontos que podem causar inabilitação, desclassificação, prejuízo ou dificuldade na execução (prazos curtos, multas altas, exigências restritivas, amostras, garantia, pagamento demorado). Classifique a gravidade.
 - "pontos_impugnacao": cláusulas possivelmente ilegais ou restritivas à competitividade, com o fundamento legal (ex.: "Art. 67 da Lei 14.133 — exigência de atestado acima de 50% do quantitativo"). Seja criterioso: só aponte o que tem base.
