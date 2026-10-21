@@ -107,7 +107,7 @@ function MonitoramentoAdmin() {
                 <th className="p-3">Compra</th>
                 <th className="p-3">Órgão</th>
                 <th className="p-3 text-center">Usuários</th>
-                <th className="p-3">Última mensagem</th>
+                <th className="p-3">Última captura</th>
                 <th className="p-3">Situação</th>
               </tr>
             </thead>

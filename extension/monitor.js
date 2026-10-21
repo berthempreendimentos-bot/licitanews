@@ -6,6 +6,8 @@
 //  3. Abre o painel "Mensagens" do portal e percorre a paginação do próprio painel
 //     (cliques reais): cada clique faz o portal buscar a página, a sonda (probe.js)
 //     entrega a resposta e ela decide se há mais páginas (página cheia = continua).
+//     Se o PEPPACORP já tem mensagens da compra, antes olha só a última página (verificação
+//     rápida): se nada ali for novo, não há o que importar e o histórico é dado como completo.
 //  4. Depois do histórico, volta periodicamente à última página para pegar as novas.
 //  5. Cada mensagem nova entra numa fila e só sai quando o servidor confirma.
 (function () {
@@ -42,6 +44,10 @@
   var badge = null;
   var registeredAt = 0;
   var reportado = {};      // estado da captura já avisado ao PEPPACORP (ciclo do administrador)
+  var mensagensServidor = 0; // quantas mensagens desta compra o PEPPACORP já tem
+  var respostas = 0;       // respostas do chat recebidas do portal
+  var rapido = null;       // verificação rápida em andamento
+  var rapidoFeito = false;
 
   function detectCompra() {
     try {
@@ -117,6 +123,7 @@
     if (stopped) return;
     ingest([], function (resp) {
       if (!resp.ok) { setBadge(resp.error || 'Sem conexão com o PEPPACORP', '#ef4444'); return; }
+      if (resp.data && typeof resp.data.mensagens === 'number') mensagensServidor = resp.data.mensagens;
       if (!handleState(resp.data || {})) return;
       if (!registered) {
         registered = true;
@@ -211,6 +218,7 @@
     var page = pageOf(d.u);
     pageSize = sizeOf(d.u) || pageSize;
     if (seenPages[page] === undefined || rows.length > seenPages[page]) seenPages[page] = rows.length;
+    respostas++;
     var fresh = [];
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
@@ -372,6 +380,38 @@
     for (var p in seenPages) top = Math.max(top, Number(p));
     return top;
   }
+  // ===== Verificação rápida =====
+  // Abre a última página (onde ficam as mais novas) e espera o PEPPACORP confirmar o envio:
+  // nenhuma nova = compra já está em dia. Qualquer novidade ou falha cai na importação completa.
+  function startRapido() {
+    rapido = { since: Date.now(), clicked: false, moved: false, base: 0 };
+    setBadge('Verificando mensagens novas…', '#f59e0b');
+  }
+  function desistirRapido() {
+    rapido = null;
+    rapidoFeito = true;
+    startHistory();
+  }
+  function rapidoStep() {
+    var q = rapido;
+    if (!q.clicked) {
+      // Espera a primeira resposta do painel (prova de que ele carregou).
+      if (!respostas) { if (Date.now() - q.since > PAGE_TIMEOUT_MS) desistirRapido(); return; }
+      q.clicked = true;
+      q.base = respostas;
+      q.since = Date.now();
+      q.moved = clickPager('last'); // sem ">>" clicável: já está na última página
+      return;
+    }
+    if (q.moved && respostas === q.base) { if (Date.now() - q.since > PAGE_TIMEOUT_MS) desistirRapido(); return; }
+    if (queue.length || sending) return; // espera o PEPPACORP confirmar o que foi lido
+    if (synced > 0) { desistirRapido(); return; }
+    rapido = null;
+    rapidoFeito = true;
+    finishHistory(true);
+    setBadge('Sem mensagens novas — ' + liveText(), null);
+  }
+
   function startHistory() {
     walk = { await: 0, clickAt: Date.now(), clicked: false, since: 0, tries: 0 };
     setBadge('Importando histórico do chat…', '#f59e0b');
@@ -431,8 +471,11 @@
     reportar('registrado');
     if (!ensurePanel()) return;
     if (walk) { walkStep(); return; }
+    if (rapido) { rapidoStep(); return; }
     if (!historyDone) {
-      if (Date.now() >= historyRetryAt) startHistory();
+      if (Date.now() < historyRetryAt) return;
+      if (!rapidoFeito && mensagensServidor > 0) startRapido();
+      else startHistory();
       return;
     }
     // Histórico importado e tudo confirmado pelo servidor: compra atualizada.

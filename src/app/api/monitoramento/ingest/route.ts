@@ -15,7 +15,8 @@ const EMPRESA_VAZIA = { cnpj: "", razao_social: "", palavras_chave: [] as string
  * Recebe mensagens do chat capturadas pela extensão (etapa 2).
  * Header: x-ingest-key (chave da empresa, em Configurações) — NÃO é o login do usuário.
  * Body: { codigo_compra: string, messages: object[] }  (até 50 por chamada)
- * Resposta: { synced, mentions, not_monitored?, encerrado? }
+ * Resposta: { synced, mentions, mensagens, not_monitored?, encerrado? }
+ * mensagens: quantas o PEPPACORP já tem da compra (a extensão decide se faz a verificação rápida).
  * Chave de um administrador: a captura vale para todos os usuários que monitoram a compra.
  */
 export async function POST(req: Request) {
@@ -73,12 +74,14 @@ export async function POST(req: Request) {
     if (uid === userId) resposta = r;
   }
   if (!porUsuario.has(userId) || porUsuario.get(userId)!.status === "Encerrado") resposta.synced = maiorSynced;
+  // O menor entre os usuários: quem acabou de cadastrar a compra ainda precisa do histórico inteiro.
+  const mensagens = Math.min(...ativos.map(([, p]) => p.mensagens || 0));
 
   if (rows.length) {
     const { error } = await sb.from("records").upsert(rows);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, ...resposta });
+  return NextResponse.json({ ok: true, ...resposta, mensagens });
 }
 
 /** Mensagens novas, alertas e situação do pregão de um usuário. */
@@ -132,13 +135,14 @@ async function processar(
       rows.push({ user_id: userId, collection: "alerts", id: alert.id, data: alert });
     }
   }
+  // Mensagens lidas do portal (mesmo sem novidade) atualizam a última captura.
   // Sinal de vida da extensão (lista vazia): só marca como "Capturando", sem mexer na última captura.
-  if (fresh.length || pregao.status !== "Capturando") {
+  if (msgs.length || pregao.status !== "Capturando") {
     const updatedPregao: Pregao = {
       ...pregao,
       status: "Capturando",
       mensagens: (pregao.mensagens || 0) + fresh.length,
-      ultima_captura: fresh.length ? now : pregao.ultima_captura,
+      ultima_captura: msgs.length ? now : pregao.ultima_captura,
     };
     rows.push({ user_id: userId, collection: "pregoes", id: pregao.id, data: updatedPregao });
   }

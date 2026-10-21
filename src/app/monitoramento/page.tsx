@@ -79,6 +79,13 @@ function haQuanto(iso: string | null) {
   return dataBR(iso, true);
 }
 
+/** Última captura: a leitura mais recente do portal (mesmo sem mensagem nova) ou a última mensagem salva. */
+function maisRecente(a: string | null, b: string | null) {
+  if (!a) return b;
+  if (!b) return a;
+  return a > b ? a : b;
+}
+
 function PregaoCard({ p, selected, onSelect, onAbrir, alertas, mensagens, ultima }: {
   p: Pregao; selected: boolean; onSelect: () => void; onAbrir: () => void; alertas: number; mensagens: number; ultima: string | null;
 }) {
@@ -383,7 +390,7 @@ export default function Monitoramento() {
           )}
           {filtrados.map((p) => (
             <PregaoCard key={p.id} p={p} selected={current?.id === p.id} alertas={alertasNovos(p.codigo_compra)}
-              mensagens={porCompra.get(p.codigo_compra)?.n ?? 0} ultima={porCompra.get(p.codigo_compra)?.ultima ?? p.ultima_captura}
+              mensagens={porCompra.get(p.codigo_compra)?.n ?? 0} ultima={maisRecente(porCompra.get(p.codigo_compra)?.ultima ?? null, p.ultima_captura)}
               onSelect={() => setSelected(p.id)} onAbrir={() => void abrir(p.codigo_compra, true)} />
           ))}
         </div>

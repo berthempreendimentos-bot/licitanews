@@ -22,7 +22,7 @@ const TEMPO_RESPOSTA_MS = 60000;
 /** De quanto em quanto tempo procura compras novas cadastradas pelos usuários. */
 export const VERIFICAR_NOVAS_MS = 20000;
 /** Versão mínima da extensão (avisa o fim da captura e reenvia o estado de abas já abertas). */
-const VERSAO_MINIMA = "0.7.0";
+const VERSAO_MINIMA = "0.8.0";
 
 export type EstadoCiclo = "fila" | "abrindo" | "capturando" | "captcha" | "concluido" | "incompleto" | "encerrado" | "nao_monitorada" | "sem_resposta" | "tempo" | "erro" | "parado";
 export type Situacao = { estado: EstadoCiclo; synced?: number; detalhe?: string };
