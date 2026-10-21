@@ -146,11 +146,23 @@ async function pesquisarComClaude<T>(sistema: string, texto: string): Promise<{ 
   }
 }
 
-export async function pesquisarNaWeb<T>(ia: IAEscolhida, sistema: string, texto: string): Promise<{ dados: T; fontes: Fonte[] }> {
+export async function pesquisarNaWeb<T>(ia: IAEscolhida, sistema: string, texto: string): Promise<{ dados: T; fontes: Fonte[]; semBusca?: boolean }> {
   if (ia.provedor === "claude") return pesquisarComClaude<T>(sistema, texto);
   try {
-    const r = await pesquisarComGemini(ia, sistema, texto);
-    return { dados: jsonDoTexto<T>(r.texto), fontes: r.fontes };
+    try {
+      const r = await pesquisarComGemini(ia, sistema, texto);
+      return { dados: jsonDoTexto<T>(r.texto), fontes: r.fontes };
+    } catch (e) {
+      // 429 na busca: a cota de "busca no Google" do Gemini é separada (e menor) que a de uso normal.
+      // Tenta sem a busca; se também der 429, o limite é da conta inteira.
+      if (!(e instanceof GeminiError) || e.status !== 429) throw e;
+      try {
+        const r = await pesquisarComGemini(ia, sistema, texto, { semBusca: true });
+        return { dados: jsonDoTexto<T>(r.texto), fontes: [], semBusca: true };
+      } catch (e2) {
+        throw e2;
+      }
+    }
   } catch (e) {
     if (e instanceof GeminiError) throw new IAError(e.message);
     if (e instanceof Error && e.name === "TimeoutError") throw new IAError("O Gemini demorou demais na pesquisa. Tente com menos itens.");

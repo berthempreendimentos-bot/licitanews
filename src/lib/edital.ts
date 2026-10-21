@@ -10,6 +10,8 @@ export type ResultadoEdital = {
   resumo: string;
   dados_gerais: {
     orgao: string;
+    /** Nº da licitação (ex.: "15/2026"); análises antigas não têm. */
+    numero_licitacao?: string;
     numero_processo: string;
     modalidade: string;
     objeto: string;
@@ -53,7 +55,7 @@ const obj = (props: Record<string, unknown>) => ({
 const SCHEMA = obj({
   resumo: str,
   dados_gerais: obj({
-    orgao: str, numero_processo: str, modalidade: str, objeto: str, criterio_julgamento: str, modo_disputa: str,
+    orgao: str, numero_licitacao: str, numero_processo: str, modalidade: str, objeto: str, criterio_julgamento: str, modo_disputa: str,
     valor_estimado: str, data_abertura_sessao: str, portal: str, exclusivo_me_epp: str, permite_consorcio: str,
     registro_de_precos: str,
   }),
@@ -77,6 +79,7 @@ const SYSTEM = `Você é um analista sênior de licitações públicas brasileir
 Leia o edital e os anexos enviados e preencha o JSON pedido, em português.
 - Extraia apenas o que está nos documentos. Quando a informação não existir, use "Não informado" (ou lista vazia). Não invente datas, valores nem exigências.
 - Em "pagina", indique a página ou o item/cláusula do edital onde a informação está (ex.: "p. 12, item 8.3"), quando for possível identificar.
+- "numero_licitacao": só o número da licitação/pregão/dispensa com o ano, ex.: "15/2026" (não o do processo administrativo).
 - "itens": liste TODOS os itens do edital/termo de referência, sem pular nem resumir a lista, com quantidade e unidade.
   - "lote": se o edital divide os itens em lotes ou grupos, o nome do lote como está no edital (ex.: "LOTE 01 - ELETRODOMÉSTICOS"), repetido em cada item do lote; sem lotes, "".
   - "numero": o número do item como aparece no edital (dentro do lote, quando houver).

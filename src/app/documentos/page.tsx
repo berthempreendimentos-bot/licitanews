@@ -9,6 +9,7 @@ import { AnaliseView } from "@/components/AnaliseView";
 import { imprimirRelatorio, nomeDoRelatorio, RelatorioEdital } from "@/components/RelatorioEdital";
 import { enviarPdf, removerPdf, UploadPdf, VisualizarPdf, type ArquivoDoc } from "@/components/ArquivoPdf";
 import { IALendo } from "@/components/IALendo";
+import { AnalisesSalvas } from "@/components/AnalisesSalvas";
 import { db, newId, useCollection, useEmpresa } from "@/lib/store";
 import { cabecalhosIA, iaDaEmpresa } from "@/lib/ia";
 import { dataBR, diasAte, nowIso } from "@/lib/format";
@@ -280,17 +281,8 @@ function Analises({ aberta, setAberta }: { aberta: string | null; setAberta: (id
   }
   if (!items.length) return <Empty title="Nenhuma análise ainda" text="As análises de edital ficam salvas aqui para consultar depois." />;
   return (
-    <div className="space-y-2">
-      {items.map((a) => (
-        <div key={a.id} onClick={() => setAberta(a.id)} className="card flex cursor-pointer items-center gap-3 p-4 hover:border-black/40">
-          <div className="min-w-0 flex-1">
-            <div className="truncate font-semibold">{a.titulo}</div>
-            <div className="text-xs text-muted">{a.resultado.dados_gerais.orgao} · {dataBR(a.created_at, true)} · {a.resultado.riscos.filter((r) => r.gravidade === "alta").length} riscos altos</div>
-          </div>
-          <button aria-label="Excluir" className="text-muted hover:text-black" onClick={(e) => { e.stopPropagation(); if (confirm("Excluir esta análise?")) db.remove("analises", a.id); }}><Trash2 size={14} /></button>
-        </div>
-      ))}
-    </div>
+    <AnalisesSalvas items={items} onAbrir={setAberta}
+      onExcluir={(a) => { if (confirm("Excluir esta análise?")) db.remove("analises", a.id); }} />
   );
 }
 

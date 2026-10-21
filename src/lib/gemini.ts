@@ -5,17 +5,52 @@
 
 const BASE = "https://generativelanguage.googleapis.com/v1beta";
 
-export class GeminiError extends Error {}
+export class GeminiError extends Error {
+  constructor(message: string, public status?: number) { super(message); }
+}
 
 export type ModeloGemini = { id: string; nome: string };
 
 function erroDaApi(status: number, corpo: string): GeminiError {
+  const e = erroDaApiTexto(status, corpo);
+  e.status = status;
+  return e;
+}
+
+/**
+ * Detalhes do 429: cota diária (plano gratuito: ~20 pedidos por dia por modelo) ou por minuto,
+ * e em quantos segundos o Google libera de novo.
+ */
+function infoCota(corpo: string): { diaria: boolean; limite: number | null; esperaS: number | null } {
+  let diaria = false, limite: number | null = null, esperaS: number | null = null;
+  try {
+    for (const d of JSON.parse(corpo)?.error?.details ?? []) {
+      for (const v of d.violations ?? []) {
+        if (/PerDay/i.test(String(v.quotaId ?? ""))) diaria = true;
+        if (v.quotaValue != null) limite = Number(v.quotaValue);
+      }
+      if (d.retryDelay) esperaS = parseFloat(String(d.retryDelay));
+    }
+  } catch { /* corpo não-JSON */ }
+  return { diaria, limite, esperaS };
+}
+
+function erroDaApiTexto(status: number, corpo: string): GeminiError {
   let msg = "";
   try { msg = JSON.parse(corpo)?.error?.message ?? ""; } catch { /* corpo não-JSON */ }
   if (status === 400 && /api key/i.test(msg)) return new GeminiError("Chave da API do Gemini inválida. Confira em Configurações.");
   if (status === 401 || status === 403) return new GeminiError("A chave do Gemini não tem permissão para usar a API. Confira no Google AI Studio.");
   if (status === 404) return new GeminiError("Modelo do Gemini não encontrado. Escolha outro em Configurações (use “Testar chave” para ver a lista).");
-  if (status === 429) return new GeminiError("Limite de uso do Gemini atingido. Tente de novo em alguns minutos ou confira a cota da sua conta.");
+  if (status === 429) {
+    const c = infoCota(corpo);
+    if (c.diaria || (c.esperaS ?? 0) > 120) {
+      const horas = c.esperaS ? Math.max(1, Math.round(c.esperaS / 3600)) : null;
+      return new GeminiError(`A cota gratuita diária do Gemini acabou nesta chave${c.limite ? ` (limite de ${c.limite} pedidos por dia por modelo)` : ""}.`
+        + `${horas ? ` Volta a funcionar em cerca de ${horas} h.` : " Volta a funcionar amanhã."}`
+        + " Para usar sem esse limite, ative o faturamento da chave no Google AI Studio (aistudio.google.com).");
+    }
+    return new GeminiError("Limite de uso do Gemini por minuto atingido. Aguarde um minuto e tente de novo.");
+  }
   if (status === 503 || status === 500) return new GeminiError("O Gemini está sobrecarregado no momento (instabilidade do Google). Já tentei de novo algumas vezes; aguarde alguns minutos e rode a pesquisa outra vez — os itens já pesquisados são pulados.");
   return new GeminiError(`Erro da API do Gemini (${status})${msg ? `: ${msg.slice(0, 200)}` : ""}.`);
 }
@@ -65,6 +100,8 @@ const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function gerarConteudo(key: string, modelo: string, corpo: unknown, timeoutMs: number): Promise<string> {
   const modelos = [modelo, ...RESERVA.filter((m) => m !== modelo)];
   let ultimo: { status: number; texto: string } | null = null;
+  // Erro do modelo escolhido: é ele que se informa (um 429 do reserva esconderia um 503 do principal).
+  let principal: { status: number; texto: string } | null = null;
   // Prazo total (a rota do servidor tem limite): nova tentativa só se ainda der tempo de responder.
   const fim = Date.now() + timeoutMs;
   const restante = () => fim - Date.now();
@@ -87,15 +124,20 @@ async function gerarConteudo(key: string, modelo: string, corpo: unknown, timeou
         break;
       }
       ultimo = { status: r.status, texto: t };
+      if (n === 0) principal = ultimo;
       if (!TEMPORARIO.has(r.status)) throw erroDaApi(r.status, t);
+      if (r.status === 429) {
+        const c = infoCota(t);
+        if (c.diaria || (c.esperaS ?? 0) > 60) break; // repetir só gastaria cota: tenta o próximo modelo
+      }
       if (tentativa < pausas.length) {
-        const ra = Number(r.headers.get("retry-after"));
+        const ra = Number(r.headers.get("retry-after")) || (infoCota(t).esperaS ?? NaN);
         await espera(Math.min(Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, 30000) : pausas[tentativa], Math.max(0, restante() - 20000)));
       }
     }
-    if (ultimo && ultimo.status === 429) break; // limite de cota vale para a conta: outro modelo não resolve
   }
-  throw erroDaApi(ultimo?.status ?? 503, ultimo?.texto ?? "");
+  const erro = principal ?? ultimo;
+  throw erroDaApi(erro?.status ?? 503, erro?.texto ?? "");
 }
 
 /** Gera uma resposta JSON seguindo o schema. Lança GeminiError com mensagem em português. */
@@ -118,11 +160,12 @@ export async function gerarJson<T>(opts: { key: string; modelo: string; sistema:
 }
 
 /** Resposta em texto com pesquisa no Google (grounding). Devolve o texto e os sites consultados. */
-export async function pesquisarComGemini(ia: { key: string; modelo: string }, sistema: string, texto: string) {
+export async function pesquisarComGemini(ia: { key: string; modelo: string }, sistema: string, texto: string, opts: { semBusca?: boolean } = {}) {
   const t = await gerarConteudo(ia.key, ia.modelo, {
     systemInstruction: { parts: [{ text: sistema }] },
     contents: [{ role: "user", parts: [{ text: texto }] }],
-    tools: [{ google_search: {} }],
+    // semBusca: a cota da busca no Google acabou; a IA responde só com o que sabe.
+    ...(opts.semBusca ? {} : { tools: [{ google_search: {} }] }),
     generationConfig: { temperature: 0.2 },
   }, 240000);
   const c = JSON.parse(t).candidates?.[0];

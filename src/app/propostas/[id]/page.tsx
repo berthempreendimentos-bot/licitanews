@@ -251,6 +251,7 @@ export default function EditorProposta() {
     let achados = 0;
     let erro = "";
     let falhas = 0;
+    let semBusca = false;
 
     if (tipo === "precos") {
       for (let k = 0; k < alvo.length && !parar.current; k++) {
@@ -272,7 +273,7 @@ export default function EditorProposta() {
         body: JSON.stringify({ modo: "mercado", itens: lote.map((i) => ({ numero: i.numero, descricao: i.descricao, unidade: i.unidade })) }),
       }).then((x) => x.json()).catch(() => ({ ok: false, error: "falha de conexão" }));
       // Erros de configuração param tudo; os demais (sobrecarga, limite, rede) só pulam o lote.
-      const deConfiguracao = (m: string) => /configurad|sem chave|inválid|permissão|não encontrado/i.test(m);
+      const deConfiguracao = (m: string) => /configurad|sem chave|inválid|permissão|não encontrado|cota gratuita diária/i.test(m);
       for (let k = 0; k < alvo.length && !parar.current && !erro; k += 10) {
         const lote = alvo.slice(k, k + 10);
         setProgresso(`Marcas e preço de mercado na internet com IA: itens ${lote[0].numero} a ${lote[lote.length - 1].numero} (${Math.min(k + 10, alvo.length)} de ${alvo.length})… 1 a 2 min por lote.`);
@@ -289,6 +290,7 @@ export default function EditorProposta() {
           continue;
         }
         {
+          if (r.semBusca) semBusca = true;
           for (const x of r.itens ?? []) {
             const n = Number(x.numero);
             const atual = p.itens.find((i) => i.numero === n)?.pesquisa;
@@ -311,7 +313,9 @@ export default function EditorProposta() {
     } else {
       setMsg({
         ok: !erro && !falhas,
-        texto: erro ? `Marcas não pesquisadas: ${erro}` : `Marcas sugeridas para ${achados} de ${feitos} itens — clique numa marca para usar.${interrompida}`,
+        texto: erro ? `Marcas não pesquisadas: ${erro}` : `Marcas sugeridas para ${achados} de ${feitos} itens — clique numa marca para usar.${interrompida}`
+          + (semBusca ? " Atenção: a cota gratuita de busca na internet do Gemini desta conta acabou, então as marcas foram sugeridas pela IA sem pesquisar na web e sem preço de mercado."
+            + " Para voltar a pesquisar na web, ative o faturamento da chave no Google AI Studio (aistudio.google.com) ou tente de novo mais tarde. Use também “Pesquisar preços” (PNCP), que não depende da IA." : ""),
       });
     }
   }

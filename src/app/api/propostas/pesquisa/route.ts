@@ -45,8 +45,12 @@ Para cada item, devolva até 4 marcas (com modelo/linha quando fizer sentido) ve
 e o preço médio unitário em reais NA MESMA UNIDADE do item (ex.: por kg, por caixa). Responda neste formato JSON:
 {"itens":[{"numero":1,"marcas":[{"marca":"...","modelo":"...","observacao":"..."}],"preco_medio":12.34,"observacao":"como o preço foi obtido (ex.: média de 3 lojas, preço por kg)"}]}`;
     try {
-      const { dados, fontes } = await pesquisarNaWeb<MercadoIA>(escolha.ia, SISTEMA, texto);
-      return NextResponse.json({ ok: true, itens: dados.itens ?? [], fontes: fontes.slice(0, 20) });
+      const { dados, fontes, semBusca } = await pesquisarNaWeb<MercadoIA>(escolha.ia, SISTEMA, texto);
+      // Sem a busca no Google (cota esgotada): marcas sugeridas pela IA; preço não, que viria da memória dela.
+      const itensR = semBusca
+        ? (dados.itens ?? []).map((i) => ({ ...i, preco_medio: null, observacao: "Sugestão da IA sem busca na web (cota de busca do Gemini esgotada) — confira a marca e o preço." }))
+        : dados.itens ?? [];
+      return NextResponse.json({ ok: true, itens: itensR, fontes: fontes.slice(0, 20), semBusca: !!semBusca });
     } catch (e) {
       if (e instanceof IAError) return NextResponse.json({ error: e.message }, { status: 422 });
       return NextResponse.json({ error: "Falha na pesquisa com IA. Tente de novo." }, { status: 500 });

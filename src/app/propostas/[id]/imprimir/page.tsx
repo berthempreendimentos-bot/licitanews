@@ -1,12 +1,11 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Printer } from "lucide-react";
 import { Empty } from "@/components/ui";
 import { useCollection, useEmpresa } from "@/lib/store";
-import { dataBR } from "@/lib/format";
 import { DADOS_PROPOSTA_VAZIOS, moeda, porExtenso, totais, totalItem } from "@/lib/proposta";
 
 /** Proposta comercial pronta para imprimir ou salvar em PDF (Ctrl+P → Salvar como PDF). */
@@ -15,6 +14,16 @@ export default function ImprimirProposta() {
   const { items, ready } = useCollection("propostas");
   const { empresa } = useEmpresa();
   const p = items.find((x) => x.id === id);
+
+  // A proposta sai só com os dados do cliente: o título da aba (que o navegador usa como nome do PDF)
+  // é o da proposta, não o do sistema.
+  const titulo = p ? ["Proposta", empresa.razao_social, [p.modalidade, p.numeroLicitacao].filter(Boolean).join(" ")].filter(Boolean).join(" - ").replace(/[\/:*?"<>|]+/g, "-") : "";
+  useEffect(() => {
+    if (!titulo) return;
+    const anterior = document.title;
+    document.title = titulo;
+    return () => { document.title = anterior; };
+  }, [titulo]);
 
   if (!ready) return <div className="text-sm text-muted">Carregando…</div>;
   if (!p) return <Empty title="Proposta não encontrada" action={<Link className="btn btn-ghost" href="/propostas">Voltar</Link>} />;
@@ -33,7 +42,9 @@ export default function ImprimirProposta() {
         <span className="text-xs text-muted">Na janela de impressão, escolha “Salvar como PDF”. Campos em vermelho estão faltando.</span>
       </div>
 
-      <article className="mx-auto max-w-[210mm] bg-white p-10 text-[12px] leading-relaxed text-black shadow-sm print:max-w-none print:p-0 print:shadow-none">
+      {/* Margem zero na folha: o navegador não imprime cabeçalho/rodapé (título do sistema, data e endereço do site). */}
+      <style>{"@page { margin: 0; } @media print { .proposta-folha { padding: 14mm 15mm !important; } }"}</style>
+      <article className="proposta-folha mx-auto max-w-[210mm] bg-white p-10 text-[12px] leading-relaxed text-black shadow-sm print:max-w-none print:shadow-none">
         <div className="border-b-2 border-black pb-3">
           <div className="text-lg font-extrabold uppercase">{falta(empresa.razao_social, "razão social")}</div>
           <div>CNPJ {falta(empresa.cnpj, "CNPJ")}</div>
@@ -115,7 +126,6 @@ export default function ImprimirProposta() {
             <div>{empresa.razao_social}</div>
           </div>
         </div>
-        <div className="mt-6 text-[9px] text-neutral-500 print:hidden">Gerado pelo PEPPACORP em {dataBR(new Date().toISOString(), true)}.</div>
       </article>
     </>
   );
