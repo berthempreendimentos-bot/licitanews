@@ -269,7 +269,7 @@ function Analises({ aberta, setAberta }: { aberta: string | null; setAberta: (id
             <div className="text-xs text-muted">{atual.fonte} · {dataBR(atual.created_at, true)}</div>
           </div>
           {atual.pncpId && <button className="btn btn-ghost" disabled={noCrm} onClick={() => salvarNoCrm(atual)}><KanbanSquare size={14} /> {noCrm ? "No CRM" : "Adicionar ao CRM"}</button>}
-          {atual.pncpId && <Link className="btn btn-primary" href={`/propostas?pncp=${encodeURIComponent(atual.pncpId)}`}><FilePlus2 size={14} /> Criar proposta</Link>}
+          <Link className="btn btn-primary" href={`/propostas?analise=${encodeURIComponent(atual.id)}`}><FilePlus2 size={14} /> Criar proposta</Link>
           <button className="btn btn-ghost" onClick={() => imprimirRelatorio(nomeDoRelatorio(atual.resultado, atual.titulo))}>Imprimir / PDF</button>
         </div>
         <AnaliseView r={atual.resultado} escolhidos={atual.lotes_escolhidos ?? []}

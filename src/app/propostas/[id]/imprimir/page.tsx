@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Printer } from "lucide-react";
@@ -63,9 +64,19 @@ export default function ImprimirProposta() {
             </tr>
           </thead>
           <tbody>
-            {itens.map((i) => (
-              <tr key={i.numero} className="break-inside-avoid">
-                <td className="border border-black px-1.5 py-1 text-center align-top">{i.numero}</td>
+            {itens.map((i, idx) => (
+              <Fragment key={i.numero}>
+              {/* Edital por lotes: cabeçalho com o subtotal de cada lote. */}
+              {i.lote && i.lote !== itens[idx - 1]?.lote && (
+                <tr className="break-inside-avoid bg-neutral-100 font-bold">
+                  <td colSpan={6} className="border border-black px-1.5 py-1">{i.lote}</td>
+                  <td className="border border-black px-1.5 py-1 text-right tabular-nums">
+                    {moeda(itens.filter((x) => x.lote === i.lote && x.precoUnitario != null).reduce((sm, x) => sm + totalItem(x), 0))}
+                  </td>
+                </tr>
+              )}
+              <tr className="break-inside-avoid">
+                <td className="border border-black px-1.5 py-1 text-center align-top">{i.numeroEdital ?? i.numero}</td>
                 <td className="border border-black px-1.5 py-1 align-top">{i.descricaoOfertada?.trim() || i.descricao}</td>
                 <td className="border border-black px-1.5 py-1 align-top">{[i.marca, i.modelo].filter(Boolean).join(" / ") || "—"}</td>
                 <td className="border border-black px-1.5 py-1 align-top">{i.unidade}</td>
@@ -73,6 +84,7 @@ export default function ImprimirProposta() {
                 <td className="border border-black px-1.5 py-1 text-right align-top tabular-nums">{i.precoUnitario != null ? moeda(i.precoUnitario) : "—"}</td>
                 <td className="border border-black px-1.5 py-1 text-right align-top tabular-nums">{i.precoUnitario != null ? moeda(totalItem(i)) : "—"}</td>
               </tr>
+              </Fragment>
             ))}
           </tbody>
           <tfoot>

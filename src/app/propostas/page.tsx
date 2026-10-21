@@ -7,22 +7,45 @@ import { Copy, FilePlus2, Loader2, Plus, Search, Trash2, X } from "lucide-react"
 import { Empty, PageHeader, StatCard } from "@/components/ui";
 import { db, newId, useCollection } from "@/lib/store";
 import { brl, dataBR, diasAte, nowIso } from "@/lib/format";
-import { COR_STATUS, condicoesDaAnalise, novaProposta, propostaDaCompra, totais, type CompraPncp } from "@/lib/proposta";
-import { STATUS_PROPOSTA, type Proposta, type StatusProposta } from "@/lib/types";
+import { analiseTemMaisItens, COR_STATUS, condicoesDaAnalise, itensDaAnalise, itensIntocados, novaProposta, propostaDaAnalise, propostaDaCompra, totais, type CompraPncp } from "@/lib/proposta";
+import { STATUS_PROPOSTA, type AnaliseEdital, type Proposta, type StatusProposta } from "@/lib/types";
 
 
 const semAcento = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-/** Cria a proposta a partir do link do PNCP (itens importados) e aproveita a análise do edital, se houver. */
-async function criarDoPncp(link: string): Promise<{ id?: string; erro?: string }> {
+/**
+ * Cria a proposta a partir do link do PNCP (itens importados) e aproveita a análise do edital, se houver.
+ * PNCP com um item só e edital analisado com mais itens (lotes): valem os itens do edital — inclusive
+ * numa proposta já criada antes da análise, se nada foi digitado nos itens dela.
+ */
+async function criarDoPncp(link: string, analise?: AnaliseEdital): Promise<{ id?: string; erro?: string }> {
   const r = await fetch(`/api/compra?id=${encodeURIComponent(link.trim())}`).then((x) => x.json()).catch(() => null);
   if (!r || r.error) return { erro: r?.error || "Não consegui consultar o PNCP. Tente de novo." };
   const c = r as CompraPncp;
+  analise ??= db.get("analises").find((a) => a.pncpId === c.pncpId);
   const existente = db.get("propostas").find((p) => p.pncpId === c.pncpId);
-  if (existente) return { id: existente.id };
+  if (existente) {
+    if (analise && analiseTemMaisItens(analise, existente.itens.length) && itensIntocados(existente)) {
+      db.upsert("propostas", { ...existente, analiseId: analise.id, itens: itensDaAnalise(analise), updated_at: nowIso() });
+    }
+    return { id: existente.id };
+  }
   const p = propostaDaCompra(newId(), nowIso(), c);
-  const analise = db.get("analises").find((a) => a.pncpId === c.pncpId);
-  db.upsert("propostas", analise ? { ...p, ...condicoesDaAnalise(analise) } : p);
+  const itens = analiseTemMaisItens(analise, p.itens.length) ? { itens: itensDaAnalise(analise!) } : {};
+  db.upsert("propostas", analise ? { ...p, analiseId: analise.id, ...condicoesDaAnalise(analise), ...itens } : p);
+  return { id: p.id };
+}
+
+/** "Criar proposta" na análise do edital: pelo PNCP quando a análise tem o link; senão, só com a análise. */
+async function criarDaAnalise(a: AnaliseEdital): Promise<{ id?: string; erro?: string }> {
+  if (a.pncpId) {
+    const r = await criarDoPncp(a.pncpId, a);
+    if (!r.erro) return r; // PNCP fora do ar: segue só com a análise
+  }
+  const existente = db.get("propostas").find((p) => p.analiseId === a.id);
+  if (existente) return { id: existente.id };
+  const p = propostaDaAnalise(newId(), nowIso(), a);
+  db.upsert("propostas", p);
   return { id: p.id };
 }
 
@@ -44,12 +67,28 @@ function NovaProposta() {
     router.push(`/propostas/${r.id}`);
   }
 
-  // Vindo de Oportunidades/Documentos com ?pncp=…: cria e abre direto.
+  // As análises precisam estar carregadas para a proposta aproveitar os itens e lotes do edital.
+  const analises = useCollection("analises");
+  const propostas = useCollection("propostas");
+
+  // Vindo de Oportunidades/Documentos com ?pncp=… ou ?analise=…: cria e abre direto.
   useEffect(() => {
+    if (auto.current || !analises.ready || !propostas.ready) return;
+    const idAnalise = sp.get("analise");
     const v = sp.get("pncp");
-    if (v && !auto.current) { auto.current = true; void criar(v); }
+    if (idAnalise) {
+      auto.current = true;
+      const a = analises.items.find((x) => x.id === idAnalise);
+      if (!a) { setErro("Análise do edital não encontrada."); return; }
+      setBusy(true);
+      void criarDaAnalise(a).then((r) => {
+        setBusy(false);
+        if (r.erro) setErro(r.erro);
+        else router.push(`/propostas/${r.id}`);
+      });
+    } else if (v) { auto.current = true; void criar(v); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sp]);
+  }, [sp, analises.ready, propostas.ready]);
 
   function emBranco() {
     const p = novaProposta(newId(), nowIso());

@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
-  AlertTriangle, ArrowLeft, CheckCircle2, Search, Square, Tags, ExternalLink, FileSpreadsheet, FileText, Loader2, Printer, ShieldCheck, Sparkles, Trash2, Wand2,
+  AlertTriangle, ArrowLeft, CheckCircle2, Search, Square, Tags, ExternalLink, FileSpreadsheet, FileText, Layers, Loader2, Printer, ShieldCheck, Sparkles, Trash2, Wand2,
 } from "lucide-react";
 import { Empty } from "@/components/ui";
 import { db, newId, useCollection, useEmpresa } from "@/lib/store";
 import { dataBR, diasAte, nowIso } from "@/lib/format";
 import { cabecalhosIA, iaDaEmpresa } from "@/lib/ia";
-import { COR_STATUS, condicoesDaAnalise, csvProposta, descontoItem, estimadoItem, moeda, refItem, totais, totalItem } from "@/lib/proposta";
+import { analiseTemMaisItens, itensIntocados, COR_STATUS, condicoesDaAnalise, csvProposta, descontoItem, estimadoItem, itensDaAnalise, moeda, refItem, totais, totalItem } from "@/lib/proposta";
+import { corDoLote } from "@/lib/lotes";
 import { STATUS_PROPOSTA, type AnaliseEdital, type ItemProposta, type PesquisaItem, type Proposta, type RevisaoProposta } from "@/lib/types";
 
 /** Link da página do edital no PNCP a partir do nº de controle. */
@@ -93,6 +94,12 @@ const COR_GRAVIDADE: Record<RevisaoProposta["gravidade"], string> = {
   alta: "border-l-red-600 bg-red-50", media: "border-l-yellow-400 bg-yellow-50", baixa: "border-l-neutral-300 bg-bg",
 };
 
+/** Análise do edital da proposta: a ligada a ela ou a do mesmo link do PNCP. */
+function analiseDaProposta(p: Proposta, analises: AnaliseEdital[]) {
+  return (p.analiseId ? analises.find((a) => a.id === p.analiseId) : undefined)
+    ?? (p.pncpId ? analises.find((a) => a.pncpId === p.pncpId) : undefined);
+}
+
 export default function EditorProposta() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -104,6 +111,8 @@ export default function EditorProposta() {
   const [p, setP] = useState<Proposta | null>(null);
   const [filtro, setFiltro] = useState("");
   const [soParticipo, setSoParticipo] = useState(false);
+  /** Aba de lote aberta na tabela de itens ("" = todos os lotes). */
+  const [abaLote, setAbaLote] = useState("");
   const [aberto, setAberto] = useState<number | null>(null);
   const [desconto, setDesconto] = useState("10");
   const [soSemPreco, setSoSemPreco] = useState(true);
@@ -118,6 +127,19 @@ export default function EditorProposta() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendente = useRef<Proposta | null>(null);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); if (pendente.current) db.upsert("propostas", pendente.current); }, []);
+
+  // PNCP com um item só e edital analisado com mais itens (lotes): usa os do edital sozinho,
+  // enquanto nada foi digitado nos itens. Com preços já digitados, fica o aviso com o botão.
+  const aplicouEdital = useRef(false);
+  useEffect(() => {
+    if (!p || aplicouEdital.current) return;
+    const a = analiseDaProposta(p, analises);
+    if (!a || !analiseTemMaisItens(a, p.itens.length) || !itensIntocados(p)) return;
+    aplicouEdital.current = true;
+    muda({ itens: itensDaAnalise(a), analiseId: a.id });
+    const lotes = new Set(a.resultado.itens.map((x) => x.lote).filter(Boolean)).size;
+    setMsg({ ok: true, texto: `Itens do edital aplicados: ${a.resultado.itens.length} itens${lotes > 1 ? ` em ${lotes} lotes` : ""} (o PNCP trazia a compra como um item só).` });
+  }, [p, analises]);
 
   function muda(patch: Partial<Proposta> | ((cur: Proposta) => Partial<Proposta>)) {
     setP((cur) => {
@@ -137,11 +159,15 @@ export default function EditorProposta() {
   if (!p) return null;
 
   const t = totais(p);
-  const analise: AnaliseEdital | undefined = p.pncpId ? analises.find((a) => a.pncpId === p.pncpId) : undefined;
+  const analise: AnaliseEdital | undefined = analiseDaProposta(p, analises);
   const ia = iaDaEmpresa(empresa);
   const dias = diasAte(p.encerramento);
   const termos = filtro.toLowerCase().split(/\s+/).filter(Boolean);
-  const visiveis = p.itens.filter((i) => (!soParticipo || i.participar) && termos.every((x) => `${i.numero} ${i.descricao} ${i.marca} ${i.modelo}`.toLowerCase().includes(x)));
+  // Lotes na ordem do edital; cada um com a sua cor (a mesma da análise).
+  const lotes = [...new Set(p.itens.map((i) => i.lote).filter((l): l is string => !!l))];
+  const cor = (lote?: string) => corDoLote(lotes.indexOf(lote ?? ""));
+  const abaAtiva = lotes.includes(abaLote) ? abaLote : "";
+  const visiveis = p.itens.filter((i) => (!abaAtiva || i.lote === abaAtiva) && (!soParticipo || i.participar) && termos.every((x) => `${i.numero} ${i.numeroEdital ?? ""} ${i.lote ?? ""} ${i.descricao} ${i.marca} ${i.modelo}`.toLowerCase().includes(x)));
 
   async function chamarIA(acao: "carta" | "descricoes" | "revisar") {
     if (!p) return;
@@ -395,12 +421,56 @@ export default function EditorProposta() {
             <button className="font-semibold text-muted hover:text-brand" onClick={() => muda((cur) => ({ itens: cur.itens.map((i) => ({ ...i, participar: false })) }))}>Nenhum</button>
           </div>
 
+          {analiseTemMaisItens(analise, p.itens.length) ? (
+            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+              <Layers size={16} className="shrink-0" />
+              <span className="flex-1">
+                O PNCP registrou esta compra com {p.itens.length === 1 ? "um item só" : `${p.itens.length} itens`}, mas o edital analisado tem
+                <b> {analise!.resultado.itens.length} itens{new Set(analise!.resultado.itens.map((x) => x.lote).filter(Boolean)).size > 1 ? ` em ${new Set(analise!.resultado.itens.map((x) => x.lote).filter(Boolean)).size} lotes` : ""}</b>.
+              </span>
+              <button className="btn btn-primary !py-1.5" onClick={() => {
+                if (p.itens.some((i) => i.precoUnitario != null || i.marca) && !confirm("Trocar os itens atuais pelos do edital? Preços e marcas já digitados nos itens atuais serão perdidos.")) return;
+                muda({ itens: itensDaAnalise(analise!) });
+                setMsg({ ok: true, texto: `${analise!.resultado.itens.length} itens importados do edital${analise!.lotes_escolhidos?.length ? " (participando dos lotes escolhidos na análise)" : ""}.` });
+              }}>Usar os itens do edital</button>
+            </div>
+          ) : p.pncpId && p.itens.length <= 1 && !analise ? (
+            <p className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-900">
+              O PNCP traz esta compra como um item só. Se o edital divide os produtos em itens ou lotes,{" "}
+              <Link className="font-semibold underline" href={`/documentos?tab=ia&pncp=${encodeURIComponent(p.link || p.pncpId)}`}>analise o edital com IA</Link>{" "}
+              e volte aqui: aparece o botão para importar os itens por lote.
+            </p>
+          ) : null}
           {p.itens.length > 0 && p.itens.every((i) => i.valorEstimado == null) && (
             <p className="mt-2 rounded-lg bg-yellow-50 p-2.5 text-xs text-yellow-800">
               Orçamento sigiloso: o órgão não divulgou o valor estimado. Use “Pesquisar preços” para buscar a referência em licitações parecidas no PNCP.
             </p>
           )}
           {progresso && <p className="mt-2 flex items-center gap-2 rounded-lg bg-blue-50 p-2.5 text-xs text-blue-800"><Loader2 size={13} className="animate-spin" /> {progresso}</p>}
+          {lotes.length > 0 && (
+            <div className="mt-3 flex gap-1.5 overflow-x-auto border-b border-border" role="tablist" aria-label="Lotes">
+              {[{ id: "", nome: "Todos os lotes", itens: p.itens }, ...lotes.map((l) => ({ id: l, nome: l, itens: p.itens.filter((i) => i.lote === l) }))].map((t) => {
+                const ativa = abaAtiva === t.id;
+                const c = t.id ? cor(t.id) : null;
+                const part = t.itens.filter((i) => i.participar);
+                const valor = part.reduce((sm, x) => sm + (x.precoUnitario != null ? totalItem(x) : estimadoItem(x)), 0);
+                return (
+                  <button key={t.id || "__todos"} type="button" role="tab" aria-selected={ativa} onClick={() => setAbaLote(t.id)}
+                    className={`-mb-px max-w-[240px] shrink-0 rounded-t-lg border-x border-t border-b-[3px] px-3 py-2 text-left transition ${
+                      ativa ? `${c ? `${c.fundo} ${c.borda}` : "border-x-border border-t-border border-b-brand bg-surface"}` : "border-transparent hover:bg-bg"
+                    }`}>
+                    <div className={`flex items-center gap-1.5 truncate text-[13px] font-bold ${c ? c.texto : ""}`}>
+                      {c && <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${c.ponto}`} />}
+                      <span className="truncate">{t.nome}</span>
+                    </div>
+                    <div className="truncate text-[11px] text-muted">
+                      {t.itens.length} {t.itens.length === 1 ? "item" : "itens"} · participando {part.length} · {moeda(valor)}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {p.itens.length === 0 ? (
             <p className="mt-4 text-sm text-muted">Proposta sem itens. Crie a proposta a partir do link do PNCP para importar os itens da licitação.</p>
           ) : (
@@ -419,12 +489,30 @@ export default function EditorProposta() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visiveis.map((i) => {
+                  {visiveis.map((i, idx) => {
                     const d = descontoItem(i);
+                    const novoLote = !!i.lote && i.lote !== visiveis[idx - 1]?.lote;
+                    const doLote = novoLote ? p.itens.filter((x) => x.lote === i.lote) : [];
+                    const todosNoLote = doLote.every((x) => x.participar);
                     return (
-                      <tr key={i.numero} className={`border-b border-border align-top ${i.participar ? "" : "opacity-45"}`}>
-                        <td className="py-3"><input type="checkbox" className="mt-1 accent-black" aria-label={`Participar do item ${i.numero}`} checked={i.participar} onChange={(e) => mudaItem(i.numero, { participar: e.target.checked })} /></td>
-                        <td className="py-3 font-semibold">{i.numero}</td>
+                      <Fragment key={i.numero}>
+                      {novoLote && (
+                        <tr className={`border-b border-border ${cor(i.lote).fundo}`}>
+                          <td className={`border-l-4 py-2 pl-2 ${cor(i.lote).bordaL}`}><input type="checkbox" className="accent-black" aria-label={`Participar do ${i.lote}`} checked={todosNoLote}
+                            onChange={(e) => muda((cur) => ({ itens: cur.itens.map((x) => (x.lote === i.lote ? { ...x, participar: e.target.checked } : x)) }))} /></td>
+                          <td colSpan={5} className={`py-2 text-[13px] font-bold ${cor(i.lote).texto}`}>
+                            <span className={`mr-1.5 inline-block h-2.5 w-2.5 rounded-full align-middle ${cor(i.lote).ponto}`} />{i.lote}
+                            <span className="ml-2 text-xs font-normal text-muted">{doLote.length} itens · participando de {doLote.filter((x) => x.participar).length}</span>
+                          </td>
+                          <td className={`py-2 pl-3 text-right text-xs font-bold whitespace-nowrap tabular-nums ${cor(i.lote).texto}`}>
+                            {moeda(doLote.filter((x) => x.participar).reduce((sm, x) => sm + (x.precoUnitario != null ? totalItem(x) : estimadoItem(x)), 0))}
+                          </td>
+                          <td />
+                        </tr>
+                      )}
+                      <tr className={`border-b border-border align-top ${i.participar ? "" : "opacity-45"}`}>
+                        <td className={`py-3 ${i.lote ? `border-l-4 pl-2 ${cor(i.lote).bordaL}` : ""}`}><input type="checkbox" className="mt-1 accent-black" aria-label={`Participar do item ${i.numero}`} checked={i.participar} onChange={(e) => mudaItem(i.numero, { participar: e.target.checked })} /></td>
+                        <td className="py-3 font-semibold">{i.numeroEdital ?? i.numero}</td>
                         <td className="py-3 pr-3">
                           <button className="text-left" onClick={() => setAberto(aberto === i.numero ? null : i.numero)}>
                             <span className={aberto === i.numero ? "" : "line-clamp-2"}>{i.descricao}</span>
@@ -456,6 +544,7 @@ export default function EditorProposta() {
                           {d == null ? "—" : `${d.toFixed(1)}%`}
                         </td>
                       </tr>
+                      </Fragment>
                     );
                   })}
                 </tbody>

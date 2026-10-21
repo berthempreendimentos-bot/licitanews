@@ -187,7 +187,11 @@ export const STATUS_PROPOSTA = ["Rascunho", "Em análise", "Pronta para envio", 
 export type StatusProposta = (typeof STATUS_PROPOSTA)[number];
 
 export type ItemProposta = {
+  /** Sequencial e único na proposta (com lotes, o número do edital se repete entre lotes). */
   numero: number;
+  /** Lote do edital (ex.: "LOTE 01 - ELETRODOMÉSTICOS") e o número do item dentro dele. */
+  lote?: string;
+  numeroEdital?: string;
   descricao: string;
   quantidade: number;
   unidade: string;
@@ -231,6 +235,8 @@ export type RevisaoProposta = { gravidade: "alta" | "media" | "baixa"; ponto: st
 export type Proposta = {
   id: string;
   pncpId: string | null;
+  /** Análise do edital de onde vieram os itens (análises feitas pelo PDF não têm pncpId). */
+  analiseId?: string;
   titulo: string;
   orgao: string;
   orgaoCnpj: string;

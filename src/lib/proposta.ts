@@ -85,6 +85,58 @@ export function propostaDaCompra(id: string, agora: string, c: CompraPncp): Prop
   });
 }
 
+/** "R$ 1.801,95" ou "20" → número. */
+function numeroBR(v?: string): number | null {
+  const m = (v ?? "").match(/(\d{1,3}(?:\.\d{3})+|\d+)(,\d+)?/);
+  if (!m) return null;
+  const n = Number(m[1].replace(/\./g, "") + (m[2] ? "." + m[2].slice(1) : ""));
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Itens da proposta a partir da análise do edital (com lotes, quando houver). Usado quando o PNCP
+ * registra a compra como um item só (ex.: "Fornecimento de eletrodomésticos…") e os itens estão no edital.
+ * Participa dos lotes escolhidos na análise; sem escolha, de todos.
+ */
+export function itensDaAnalise(a: AnaliseEdital): ItemProposta[] {
+  const escolhidos = a.lotes_escolhidos ?? [];
+  return (a.resultado.itens ?? []).map((it, i) => ({
+    numero: i + 1,
+    ...(it.lote?.trim() ? { lote: it.lote.trim(), numeroEdital: it.numero } : {}),
+    descricao: it.descricao,
+    quantidade: numeroBR(it.quantidade) ?? 1,
+    unidade: it.unidade || "UN",
+    valorEstimado: numeroBR(it.valor_estimado),
+    precoUnitario: null, marca: "", modelo: "",
+    participar: !escolhidos.length || !it.lote?.trim() || escolhidos.includes(it.lote.trim()),
+  }));
+}
+
+/** Nada digitado nos itens ainda (dá para trocar pelos do edital sem perder trabalho). */
+export const itensIntocados = (p: Pick<Proposta, "itens">) =>
+  p.itens.every((i) => i.precoUnitario == null && !i.marca && !i.modelo && !i.descricaoOfertada?.trim());
+
+/** Proposta nova a partir só da análise do edital (edital enviado em PDF, sem link do PNCP). */
+export function propostaDaAnalise(id: string, agora: string, a: AnaliseEdital): Proposta {
+  const g = a.resultado.dados_gerais;
+  const ok = (v?: string) => (v && !/^n[ãa]o informado/i.test(v.trim()) ? v.trim() : "");
+  return novaProposta(id, agora, {
+    analiseId: a.id,
+    titulo: (ok(g.objeto) || a.titulo).slice(0, 200),
+    orgao: ok(g.orgao),
+    numeroLicitacao: ok(g.modalidade),
+    processo: ok(g.numero_processo),
+    modalidade: ok(g.modalidade).split(/\s+\d/)[0],
+    itens: itensDaAnalise(a),
+    ...condicoesDaAnalise(a),
+  });
+}
+
+/** A análise traz mais itens que o PNCP? (então os itens do edital são os que valem para a proposta) */
+export function analiseTemMaisItens(a: AnaliseEdital | null | undefined, itensAtuais: number) {
+  return !!a && (a.resultado.itens?.length ?? 0) > Math.max(itensAtuais, 1);
+}
+
 const informado = (v: string | undefined) => (v && !/^n[ãa]o informado$/i.test(v.trim()) ? v.trim() : "");
 
 /** Condições e exigências tiradas da análise do edital feita com IA (sem custo novo de IA). */
@@ -109,9 +161,9 @@ const num = (v: number | null) => (v == null ? "" : v.toFixed(2).replace(".", ",
 
 /** Planilha dos itens (CSV com ";" — abre direto no Excel em português). */
 export function csvProposta(p: Proposta) {
-  const linhas = [["Item", "Descrição do edital", "Descrição ofertada", "Marca", "Modelo", "Unidade", "Quantidade", "Valor estimado unit.", "Preço unit.", "Preço total", "Participa"]];
+  const linhas = [["Lote", "Item", "Descrição do edital", "Descrição ofertada", "Marca", "Modelo", "Unidade", "Quantidade", "Valor estimado unit.", "Preço unit.", "Preço total", "Participa"]];
   for (const i of p.itens) {
-    linhas.push([String(i.numero), i.descricao, i.descricaoOfertada ?? "", i.marca, i.modelo, i.unidade, String(i.quantidade),
+    linhas.push([i.lote ?? "", i.numeroEdital ?? String(i.numero), i.descricao, i.descricaoOfertada ?? "", i.marca, i.modelo, i.unidade, String(i.quantidade),
       num(i.valorEstimado), num(i.precoUnitario), num(i.precoUnitario == null ? null : totalItem(i)), i.participar ? "Sim" : "Não"]);
   }
   return "﻿" + linhas.map((l) => l.map(csvCampo).join(";")).join("\r\n");

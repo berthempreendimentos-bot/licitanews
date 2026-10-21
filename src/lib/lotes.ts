@@ -45,3 +45,20 @@ export function lotesDoEdital(r: ResultadoEdital): Lote[] {
     return { nome, itens: lista, total, totalTexto: total != null ? brl(total) : "—" };
   });
 }
+
+/**
+ * Cor de cada lote (pela ordem no edital), igual na análise e na proposta.
+ * Classes escritas por extenso para o Tailwind gerar.
+ */
+export const CORES_LOTE = [
+  { ponto: "bg-blue-500", texto: "text-blue-800", fundo: "bg-blue-50", borda: "border-blue-500", bordaL: "border-l-blue-500", anel: "ring-blue-500/20" },
+  { ponto: "bg-emerald-500", texto: "text-emerald-800", fundo: "bg-emerald-50", borda: "border-emerald-500", bordaL: "border-l-emerald-500", anel: "ring-emerald-500/20" },
+  { ponto: "bg-amber-500", texto: "text-amber-800", fundo: "bg-amber-50", borda: "border-amber-500", bordaL: "border-l-amber-500", anel: "ring-amber-500/20" },
+  { ponto: "bg-violet-500", texto: "text-violet-800", fundo: "bg-violet-50", borda: "border-violet-500", bordaL: "border-l-violet-500", anel: "ring-violet-500/20" },
+  { ponto: "bg-rose-500", texto: "text-rose-800", fundo: "bg-rose-50", borda: "border-rose-500", bordaL: "border-l-rose-500", anel: "ring-rose-500/20" },
+  { ponto: "bg-cyan-500", texto: "text-cyan-800", fundo: "bg-cyan-50", borda: "border-cyan-500", bordaL: "border-l-cyan-500", anel: "ring-cyan-500/20" },
+  { ponto: "bg-orange-500", texto: "text-orange-800", fundo: "bg-orange-50", borda: "border-orange-500", bordaL: "border-l-orange-500", anel: "ring-orange-500/20" },
+  { ponto: "bg-teal-500", texto: "text-teal-800", fundo: "bg-teal-50", borda: "border-teal-500", bordaL: "border-l-teal-500", anel: "ring-teal-500/20" },
+] as const;
+
+export const corDoLote = (indice: number) => CORES_LOTE[Math.max(0, indice) % CORES_LOTE.length];
