@@ -75,7 +75,7 @@ const GRAV: Record<string, { tag: string; borda: string; nome: string }> = {
 const prazoImportante = (evento: string) => /envio|proposta|disputa|lance|abertura|sess[aã]o|habilita/i.test(evento) && !/esclarec|impugna/i.test(evento);
 
 const SECOES: [string, string][] = [
-  ["prazos", "Prazos"], ["riscos", "Riscos"], ["habilitacao", "Habilitação"], ["declaracoes", "Declarações"],
+  ["prazos", "Prazos"], ["habilitacao", "Habilitação"], ["riscos", "Riscos"], ["declaracoes", "Declarações"],
   ["proposta", "Proposta e execução"], ["itens", "Itens"], ["checklist", "Checklist"],
 ];
 
@@ -157,6 +157,21 @@ export function AnaliseView({ r }: { r: ResultadoEdital }) {
         </ol>
       </Secao>
 
+      <Secao id="habilitacao" titulo="Habilitação" icon={CheckSquare}
+        extra={<span className="text-xs font-normal text-muted">{habilitacao.reduce((t, [, l]) => t + (l?.length ?? 0), 0)} exigências</span>}>
+        <div className="grid gap-3 md:grid-cols-2">
+          {habilitacao.map(([nome, itens]) => (
+            <Bloco key={nome} className="!bg-surface">
+              <div className="mb-2.5 flex items-center justify-between gap-2 border-b border-border pb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-brand">{nome}</span>
+                <span className="badge bg-bg text-muted">{itens?.length ?? 0}</span>
+              </div>
+              <Lista itens={itens} />
+            </Bloco>
+          ))}
+        </div>
+      </Secao>
+
       <Secao id="riscos" titulo="Riscos" icon={AlertTriangle} extra={riscosAltos > 0 && <span className="badge bg-red-600 text-white">{riscosAltos} alto{riscosAltos > 1 ? "s" : ""}</span>}>
         {!riscos.length && <p className="text-sm text-muted">Nenhum risco relevante apontado.</p>}
         <ul className="grid gap-3 md:grid-cols-2">
@@ -194,21 +209,6 @@ export function AnaliseView({ r }: { r: ResultadoEdital }) {
             );
           })}
         </ul>
-      </Secao>
-
-      <Secao id="habilitacao" titulo="Habilitação" icon={CheckSquare}
-        extra={<span className="text-xs font-normal text-muted">{habilitacao.reduce((t, [, l]) => t + (l?.length ?? 0), 0)} exigências</span>}>
-        <div className="grid gap-3 md:grid-cols-2">
-          {habilitacao.map(([nome, itens]) => (
-            <Bloco key={nome} className="!bg-surface">
-              <div className="mb-2.5 flex items-center justify-between gap-2 border-b border-border pb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-brand">{nome}</span>
-                <span className="badge bg-bg text-muted">{itens?.length ?? 0}</span>
-              </div>
-              <Lista itens={itens} />
-            </Bloco>
-          ))}
-        </div>
       </Secao>
 
       <Secao id="declaracoes" titulo="Declarações exigidas" icon={FileCheck2} extra={<span className="text-xs font-normal text-muted">{r.declaracoes?.length ?? 0} declarações</span>}>

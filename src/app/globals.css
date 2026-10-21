@@ -90,3 +90,60 @@ body {
   main { padding: 0 !important; max-width: none !important; }
   .lg\:ml-64 { margin-left: 0 !important; }
 }
+
+/* Relatório minimalista da análise de edital (só no "Imprimir / PDF") */
+.relatorio-print { display: none; }
+@media print {
+  body.imprimindo-relatorio > *:not(.relatorio-print) { display: none !important; }
+  body.imprimindo-relatorio .relatorio-print { display: block; }
+}
+@page { margin: 12mm 13mm; }
+.relatorio-print {
+  --rel-navy: #0b1a33; --rel-azul: #1d4ed8; --rel-azul-claro: #eff4ff; --rel-vermelho: #c81e1e; --rel-vermelho-claro: #fdeeee;
+  --rel-ambar: #b45309; --rel-ambar-claro: #fef3c7; --rel-roxo: #6d28d9; --rel-roxo-claro: #f3efff; --rel-verde: #047857; --rel-verde-claro: #ecfdf5;
+  font-size: 9.5pt; line-height: 1.38; color: #111; background: #fff;
+  print-color-adjust: exact; -webkit-print-color-adjust: exact;
+}
+.relatorio-print b { font-weight: 600; }
+.rel-topo { background: var(--rel-navy); color: #fff; padding: 9pt 11pt 8pt; border-radius: 4pt; margin-bottom: 7pt; border-bottom: 3pt solid #ff7a90; }
+.rel-kicker { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .08em; color: #ff9fb0; font-weight: 700; }
+.rel-h1 { font-size: 13pt; font-weight: 800; margin: 2pt 0 1pt; }
+.rel-sub { font-size: 8.5pt; color: #c9d4ea; }
+.rel-objeto { margin-top: 4pt; font-size: 9pt; color: #eef2fa; }
+.rel-h2 { font-size: 8pt; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; margin: 10pt 0 4pt; padding: 2.5pt 6pt; color: var(--rel-azul);
+  background: var(--rel-azul-claro); border-left: 3pt solid var(--rel-azul); border-radius: 2pt; break-after: avoid; }
+.rel-h2.rel-vermelho { color: var(--rel-vermelho); background: var(--rel-vermelho-claro); border-left-color: var(--rel-vermelho); }
+.rel-h2.rel-roxo { color: var(--rel-roxo); background: var(--rel-roxo-claro); border-left-color: var(--rel-roxo); }
+.rel-h2.rel-verde { color: var(--rel-verde); background: var(--rel-verde-claro); border-left-color: var(--rel-verde); }
+.rel-h3 { font-size: 8pt; font-weight: 800; margin: 0 0 1.5pt; color: var(--rel-navy); text-transform: uppercase; letter-spacing: .04em; }
+.rel-p { margin: 0 0 3pt; }
+.rel-muted { color: #555; }
+.rel-ref { font-size: 7.5pt; color: var(--rel-azul); opacity: .75; white-space: nowrap; }
+.rel-ul, .rel-ol { margin: 0; padding-left: 12pt; }
+.rel-ul { list-style: disc; }
+.rel-ul li::marker { color: var(--rel-azul); }
+.rel-ol { list-style: decimal; }
+.rel-ol li::marker { color: var(--rel-azul); font-weight: 800; }
+.rel-check li::marker { color: var(--rel-verde); }
+.rel-ul li, .rel-ol li { margin-bottom: 1.5pt; break-inside: avoid; }
+.rel-riscos { list-style: none; padding-left: 0; }
+.rel-riscos li { margin-bottom: 3pt; }
+.rel-tag { display: inline-block; font-size: 6.5pt; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; padding: .5pt 4pt; border-radius: 2pt; vertical-align: 1pt; }
+.rel-alta { background: var(--rel-vermelho); color: #fff; }
+.rel-media { background: var(--rel-ambar-claro); color: var(--rel-ambar); }
+.rel-baixa { background: #e5e7eb; color: #4b5563; }
+.rel-2col { column-count: 2; column-gap: 14pt; }
+.rel-bloco { break-inside: avoid; margin-bottom: 5pt; }
+.rel-tab { width: 100%; border-collapse: collapse; margin-bottom: 4pt; }
+.rel-tab th { text-align: left; font-size: 7.5pt; text-transform: uppercase; color: #fff; background: var(--rel-navy); font-weight: 600; padding: 2pt 4pt; }
+.rel-tab td { border-bottom: 0.5px solid #e2e2e2; padding: 2pt 4pt; vertical-align: top; }
+.rel-tab tr { break-inside: avoid; }
+.rel-tab tr.rel-urgente td { background: var(--rel-vermelho-claro); }
+.rel-tab tr.rel-urgente td:first-child { color: var(--rel-vermelho); border-left: 2pt solid var(--rel-vermelho); }
+.rel-w40 { width: 40%; font-weight: 600; }
+.rel-w25 { width: 22%; font-weight: 600; color: var(--rel-navy); }
+.rel-dir { text-align: right; white-space: nowrap; }
+.rel-fatos { width: calc(100% + 6pt); border-collapse: separate; border-spacing: 3pt 0; margin: 0 -3pt 2pt; }
+.rel-fatos td { width: 25%; background: var(--rel-azul-claro); border-top: 2pt solid var(--rel-azul); padding: 3pt 5pt; vertical-align: top; font-weight: 700; font-size: 8.5pt; color: var(--rel-navy); }
+.rel-fatos span { display: block; font-size: 7pt; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--rel-azul); }
+.rel-rodape { margin-top: 10pt; padding-top: 3pt; border-top: 1pt solid var(--rel-navy); font-size: 7pt; color: #777; }

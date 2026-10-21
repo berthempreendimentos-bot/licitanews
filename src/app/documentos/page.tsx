@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Eye, ExternalLink, FilePlus2, FileUp, KanbanSquare, Loader2, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { Empty, PageHeader, StatCard } from "@/components/ui";
 import { AnaliseView } from "@/components/AnaliseView";
+import { imprimirRelatorio, nomeDoRelatorio, RelatorioEdital } from "@/components/RelatorioEdital";
 import { enviarPdf, removerPdf, UploadPdf, VisualizarPdf, type ArquivoDoc } from "@/components/ArquivoPdf";
 import { db, newId, useCollection, useEmpresa } from "@/lib/store";
 import { cabecalhosIA, iaDaEmpresa } from "@/lib/ia";
@@ -252,9 +253,10 @@ function Analises({ aberta, setAberta }: { aberta: string | null; setAberta: (id
           </div>
           {atual.pncpId && <button className="btn btn-ghost" disabled={noCrm} onClick={() => salvarNoCrm(atual)}><KanbanSquare size={14} /> {noCrm ? "No CRM" : "Adicionar ao CRM"}</button>}
           {atual.pncpId && <Link className="btn btn-primary" href={`/propostas?pncp=${encodeURIComponent(atual.pncpId)}`}><FilePlus2 size={14} /> Criar proposta</Link>}
-          <button className="btn btn-ghost" onClick={() => window.print()}>Imprimir / PDF</button>
+          <button className="btn btn-ghost" onClick={() => imprimirRelatorio(nomeDoRelatorio(atual.resultado, atual.titulo))}>Imprimir / PDF</button>
         </div>
         <AnaliseView r={atual.resultado} />
+        <RelatorioEdital r={atual.resultado} titulo={atual.titulo} fonte={atual.fonte} data={dataBR(atual.created_at, true)} />
       </>
     );
   }
