@@ -13,6 +13,7 @@ import { AlertasDocumentos } from "./AlertasDocumentos";
 import { ExtensaoPonte } from "./ExtensaoPonte";
 import { CicloAdminAuto } from "./CicloAdminAuto";
 import { BotaoSair } from "./BotaoSair";
+import { IAStatus } from "./IAStatus";
 import { useCollection, useEmpresa } from "@/lib/store";
 import { useAdmin } from "@/lib/useAdmin";
 
@@ -151,6 +152,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {collapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
             </button>
             <div className="text-sm font-semibold truncate">{empresa.razao_social || "Minha empresa"}</div>
+            <IAStatus />
             {empresa.cnpj && <div className="hidden sm:block text-xs text-muted">CNPJ {empresa.cnpj}</div>}
             <BotaoSair />
           </header>
