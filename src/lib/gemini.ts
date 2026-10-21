@@ -50,8 +50,11 @@ function paraSchemaGemini(s: unknown): unknown {
 
 type Parte = { text: string } | { inline_data: { mime_type: string; data: string } };
 
-/** Modelos mais leves usados quando o escolhido está sobrecarregado (503). */
-const RESERVA = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"];
+/**
+ * Modelos usados quando o escolhido está sobrecarregado (503). Os apelidos "-latest" são mantidos
+ * pelo Google e sempre apontam para a versão atual (modelos com número são aposentados com o tempo).
+ */
+const RESERVA = ["gemini-flash-latest", "gemini-flash-lite-latest"];
 const TEMPORARIO = new Set([429, 500, 503]);
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -77,8 +80,13 @@ async function gerarConteudo(key: string, modelo: string, corpo: unknown, timeou
       });
       const t = await r.text();
       if (r.ok) return t;
+      // Modelo que não existe (ou foi aposentado pelo Google, ex.: gemini-2.5-flash): passa para o próximo,
+      // sem trocar o erro de verdade (senão apareceria "modelo não encontrado" com o Gemini sobrecarregado).
+      if (r.status === 404) {
+        if (n === 0) ultimo = { status: r.status, texto: t };
+        break;
+      }
       ultimo = { status: r.status, texto: t };
-      if (n > 0 && r.status === 404) break; // modelo reserva não existe nesta conta: tenta o próximo
       if (!TEMPORARIO.has(r.status)) throw erroDaApi(r.status, t);
       if (tentativa < pausas.length) {
         const ra = Number(r.headers.get("retry-after"));
