@@ -21,9 +21,9 @@ function parsePncp(v: string) {
 const isPdf = (b: Buffer) => b.subarray(0, 5).toString("latin1") === "%PDF-";
 
 async function baixar(url: string): Promise<Buffer | null> {
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 2; i++) {
     try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(60000), cache: "no-store" });
+      const r = await fetch(url, { signal: AbortSignal.timeout(30000), cache: "no-store" });
       if (r.ok) return Buffer.from(await r.arrayBuffer());
       if (r.status < 500) return null;
     } catch {

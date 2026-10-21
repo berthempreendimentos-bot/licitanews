@@ -8,6 +8,7 @@ import { Empty, PageHeader, StatCard } from "@/components/ui";
 import { AnaliseView } from "@/components/AnaliseView";
 import { imprimirRelatorio, nomeDoRelatorio, RelatorioEdital } from "@/components/RelatorioEdital";
 import { enviarPdf, removerPdf, UploadPdf, VisualizarPdf, type ArquivoDoc } from "@/components/ArquivoPdf";
+import { IALendo } from "@/components/IALendo";
 import { db, newId, useCollection, useEmpresa } from "@/lib/store";
 import { cabecalhosIA, iaDaEmpresa } from "@/lib/ia";
 import { dataBR, diasAte, nowIso } from "@/lib/format";
@@ -189,17 +190,28 @@ function AnalisarEdital({ onPronta, pncpInicial }: { onPronta: (a: AnaliseEdital
     arquivos.forEach((f) => fd.append("arquivos", f));
     if (pncp.trim()) fd.append("pncp", pncp.trim());
     if (texto.trim()) fd.append("texto", texto);
+    // O servidor desiste em 5 min; aqui espera um pouco mais para receber a mensagem de erro dele.
+    const ctrl = new AbortController();
+    const limite = setTimeout(() => ctrl.abort(), 320000);
     try {
-      const r = await fetch("/api/edital/analisar", { method: "POST", body: fd, headers: cabecalhosIA(empresa) });
-      const d = await r.json();
+      const r = await fetch("/api/edital/analisar", { method: "POST", body: fd, headers: cabecalhosIA(empresa), signal: ctrl.signal });
+      // Resposta sem JSON: o servidor caiu no meio (ex.: tempo esgotado na hospedagem).
+      const d = await r.json().catch(() => ({
+        error: r.status === 504 || r.status === 502
+          ? "A análise passou do tempo limite. Tente de novo; se repetir, envie só o PDF do edital (sem anexos) ou troque o modelo da IA."
+          : `O servidor respondeu com erro (${r.status}). Tente de novo.`,
+      }));
       if (d.error) { setError(d.error); return; }
       const a: AnaliseEdital = { id: newId(), titulo: d.titulo, fonte: d.fonte, pncpId: d.pncpId, resultado: d.resultado, created_at: nowIso() };
       db.upsert("analises", a);
       onPronta(a);
       setArquivos([]); setTexto(""); setPncp("");
-    } catch {
-      setError("Falha de conexão durante a análise. Tente de novo.");
+    } catch (err) {
+      setError((err as Error).name === "AbortError"
+        ? "A análise passou do tempo limite. Tente de novo; se repetir, envie só o PDF do edital (sem anexos) ou troque o modelo da IA."
+        : "Falha de conexão durante a análise. Confira a internet e tente de novo.");
     } finally {
+      clearTimeout(limite);
       setLoading(false);
     }
   }
@@ -228,10 +240,15 @@ function AnalisarEdital({ onPronta, pncpInicial }: { onPronta: (a: AnaliseEdital
       </div>
       <div className="text-center text-xs font-semibold text-muted">— ou —</div>
       <textarea className="input min-h-28" placeholder="Cole aqui o texto do edital" value={texto} onChange={(e) => setTexto(e.target.value)} />
-      {error && <div className="text-sm font-semibold">{error}</div>}
-      <button className="btn btn-primary w-full justify-center" disabled={loading}>
-        <Sparkles size={14} /> {loading ? "Analisando… (editais longos levam 1 a 3 minutos)" : "Analisar com IA"}
-      </button>
+      {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-700">{error}</div>}
+      {loading ? (
+        <IALendo origem={pncp.trim() ? "pncp" : arquivos.length ? "arquivo" : "texto"}
+          provedor={ia.provedor === "gemini" ? `Google Gemini · ${ia.gemini_modelo}` : "Claude"} />
+      ) : (
+        <button className="btn btn-primary w-full justify-center">
+          <Sparkles size={14} /> Analisar com IA
+        </button>
+      )}
     </form>
   );
 }

@@ -147,3 +147,21 @@ body {
 .rel-fatos td { width: 25%; background: var(--rel-azul-claro); border-top: 2pt solid var(--rel-azul); padding: 3pt 5pt; vertical-align: top; font-weight: 700; font-size: 8.5pt; color: var(--rel-navy); }
 .rel-fatos span { display: block; font-size: 7pt; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--rel-azul); }
 .rel-rodape { margin-top: 10pt; padding-top: 3pt; border-top: 1pt solid var(--rel-navy); font-size: 7pt; color: #777; }
+
+/* Animação "IA lendo o edital" (components/IALendo.tsx) */
+@keyframes ia-scan { 0% { top: -20%; } 100% { top: 100%; } }
+@keyframes ia-flutua { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes ia-brilho { 0%, 100% { opacity: 0; transform: scale(.6) rotate(0deg); } 50% { opacity: 1; transform: scale(1.15) rotate(45deg); } }
+@keyframes ia-ponto { 0%, 80%, 100% { opacity: .2; } 40% { opacity: 1; } }
+@keyframes ia-barra { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+.ia-scan { animation: ia-scan 1.8s ease-in-out infinite; }
+.ia-robo { animation: ia-flutua 2.4s ease-in-out infinite; }
+.ia-faisca { animation: ia-brilho 1.6s ease-in-out infinite; }
+.ia-faisca-2 { animation-delay: .8s; }
+.ia-pontos i { font-style: normal; animation: ia-ponto 1.2s infinite; }
+.ia-pontos i:nth-child(2) { animation-delay: .2s; }
+.ia-pontos i:nth-child(3) { animation-delay: .4s; }
+.ia-barra { animation: ia-barra 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .ia-scan, .ia-robo, .ia-faisca, .ia-pontos i, .ia-barra { animation: none; }
+}

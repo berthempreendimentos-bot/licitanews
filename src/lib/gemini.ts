@@ -62,13 +62,17 @@ const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function gerarConteudo(key: string, modelo: string, corpo: unknown, timeoutMs: number): Promise<string> {
   const modelos = [modelo, ...RESERVA.filter((m) => m !== modelo)];
   let ultimo: { status: number; texto: string } | null = null;
+  // Prazo total (a rota do servidor tem limite): nova tentativa só se ainda der tempo de responder.
+  const fim = Date.now() + timeoutMs;
+  const restante = () => fim - Date.now();
   for (const [n, m] of modelos.entries()) {
     const pausas = n === 0 ? [2000, 5000, 10000] : [3000];
     for (let tentativa = 0; tentativa <= pausas.length; tentativa++) {
+      if (restante() < 20000) throw ultimo ? erroDaApi(ultimo.status, ultimo.texto) : new GeminiError("O Gemini demorou demais para responder. Tente de novo.");
       const r = await fetch(`${BASE}/models/${encodeURIComponent(m)}:generateContent`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.timeout(restante()),
         body: JSON.stringify(corpo),
       });
       const t = await r.text();
@@ -78,7 +82,7 @@ async function gerarConteudo(key: string, modelo: string, corpo: unknown, timeou
       if (!TEMPORARIO.has(r.status)) throw erroDaApi(r.status, t);
       if (tentativa < pausas.length) {
         const ra = Number(r.headers.get("retry-after"));
-        await espera(Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, 30000) : pausas[tentativa]);
+        await espera(Math.min(Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, 30000) : pausas[tentativa], Math.max(0, restante() - 20000)));
       }
     }
     if (ultimo && ultimo.status === 429) break; // limite de cota vale para a conta: outro modelo não resolve
@@ -87,12 +91,12 @@ async function gerarConteudo(key: string, modelo: string, corpo: unknown, timeou
 }
 
 /** Gera uma resposta JSON seguindo o schema. Lança GeminiError com mensagem em português. */
-export async function gerarJson<T>(opts: { key: string; modelo: string; sistema: string; partes: Parte[]; schema: unknown }): Promise<T> {
+export async function gerarJson<T>(opts: { key: string; modelo: string; sistema: string; partes: Parte[]; schema: unknown; prazoMs?: number }): Promise<T> {
   const t = await gerarConteudo(opts.key, opts.modelo, {
     systemInstruction: { parts: [{ text: opts.sistema }] },
     contents: [{ role: "user", parts: opts.partes }],
     generationConfig: { responseMimeType: "application/json", responseSchema: paraSchemaGemini(opts.schema), temperature: 0.2 },
-  }, 290000);
+  }, opts.prazoMs ?? 230000);
   const d = JSON.parse(t);
   const c = d.candidates?.[0];
   if (!c) throw new GeminiError(d.promptFeedback?.blockReason ? "O Gemini bloqueou o documento enviado." : "O Gemini não devolveu resultado.");
