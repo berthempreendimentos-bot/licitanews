@@ -165,6 +165,8 @@ export type DocumentoEmpresa = {
   emissao: string | null; // YYYY-MM-DD
   validade: string | null; // YYYY-MM-DD
   link: string; // onde o arquivo está guardado (Drive, OneDrive…)
+  /** PDF enviado para o PEPPACORP (Supabase Storage, bucket "documentos"). */
+  arquivo?: { path: string; nome: string; tamanho: number };
   observacao: string;
   created_at: string;
 };

@@ -16,8 +16,8 @@ export function useAdmin(): boolean | null {
   return admin;
 }
 
-/** fetch com o token do usuário logado (as rotas /api/admin conferem se é administrador). */
-export async function fetchAdmin(url: string, init: RequestInit = {}) {
+/** fetch com o token do usuário logado (as rotas conferem quem é; as /api/admin, se é administrador). */
+export async function fetchComLogin(url: string, init: RequestInit = {}) {
   const { data } = (await supabase?.auth.getSession()) ?? { data: { session: null } };
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bearer ${data.session?.access_token ?? ""}`);
@@ -27,3 +27,5 @@ export async function fetchAdmin(url: string, init: RequestInit = {}) {
   if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
   return d;
 }
+
+export const fetchAdmin = fetchComLogin;

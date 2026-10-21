@@ -13,11 +13,16 @@ export async function ehAdmin(sb: SupabaseClient, userId: string): Promise<boole
   return admin;
 }
 
-/** Id do usuário logado (header Authorization: Bearer <token do Supabase>) se for administrador; senão null. */
-export async function adminDaRequisicao(sb: SupabaseClient, req: Request): Promise<string | null> {
+/** Usuário logado (header Authorization: Bearer <token do Supabase>), ou null. */
+export async function usuarioDaRequisicao(sb: SupabaseClient, req: Request) {
   const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return null;
   const { data } = await sb.auth.getUser(token);
-  const user = data.user;
+  return data.user ?? null;
+}
+
+/** Id do usuário logado se for administrador; senão null. */
+export async function adminDaRequisicao(sb: SupabaseClient, req: Request): Promise<string | null> {
+  const user = await usuarioDaRequisicao(sb, req);
   return user && user.app_metadata?.role === "admin" ? user.id : null;
 }
