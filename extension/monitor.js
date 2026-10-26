@@ -6,9 +6,10 @@
 //  3. Abre o painel "Mensagens" do portal e percorre a paginação do próprio painel
 //     (cliques reais): cada clique faz o portal buscar a página, a sonda (probe.js)
 //     entrega a resposta e ela decide se há mais páginas (página cheia = continua).
-//     Se o PEPPACORP já tem mensagens da compra, antes olha só a última página (verificação
+//     Se o PEPPACORP já tem mensagens da compra, antes olha só a página das mais novas (verificação
 //     rápida): se nada ali for novo, não há o que importar e o histórico é dado como completo.
-//  4. Depois do histórico, volta periodicamente à última página para pegar as novas.
+//     O portal lista da mais nova para a mais antiga: a página 0 tem as mais novas.
+//  4. Depois do histórico, volta periodicamente à página das mais novas para pegar as novas.
 //  5. Cada mensagem nova entra numa fila e só sai quando o servidor confirma.
 (function () {
   'use strict';
@@ -19,6 +20,9 @@
   var HEARTBEAT_MS = 45000;
   var LIVE_REFRESH_MS = 30000;
   var PAGE_TIMEOUT_MS = 15000;
+  var PANEL_TIMEOUT_MS = 60000; // painel "Mensagens" não abriu nesse tempo: avisa o ciclo para pular a compra
+  var PANEL_CLICK_GAP_MS = 15000;
+  var PANEL_MAX_CLICKS = 3;     // poucos cliques espaçados: clicar sem parar abre e fecha o painel
   var MAX_TRIES = 4;
   var BATCH = 20;
 
@@ -35,11 +39,14 @@
   var retryTimer = null;
   var synced = 0;
   var pageSize = PAGE_SIZE_DEFAULT;
-  var seenPages = {};      // página (0 = mais antiga) -> quantidade recebida
+  var seenPages = {};      // página -> quantidade recebida
+  var pageTop = {};        // página -> dataHora mais recente recebida nela
+  var newestFirst = true;  // o portal entrega a página 0 com as mais novas (confirmado ao ver a página 1)
   var walk = null;         // importação do histórico em andamento
   var historyDone = false;
   var historyRetryAt = 0;
   var lastPanelClick = 0;
+  var panelClicks = 0;
   var lastLiveRefresh = 0;
   var badge = null;
   var registeredAt = 0;
@@ -203,6 +210,14 @@
     } catch (e) {}
     return null;
   }
+  function newestOf(rows) {
+    var top = '';
+    for (var i = 0; i < rows.length; i++) {
+      var v = rows[i] && rows[i].dataHora;
+      if (v != null && String(v) > top) top = String(v);
+    }
+    return top;
+  }
   function keyOf(m) {
     var k = m.chaveMensagemNaOrigem != null ? m.chaveMensagemNaOrigem : (m.id != null ? m.id : m.codigo);
     return k == null ? null : String(k);
@@ -213,12 +228,16 @@
     var d = ev.data;
     var m = String(d.u || '').match(/comprasnet-mensagem\/v2\/chat\/(\d+)/);
     if (!m || m[1] !== compra || !registered || stopped) return;
-    if (!(d.s >= 200 && d.s < 300)) return; // erro (429, 401…) nunca encerra: o relógio da caminhada tenta de novo
-    var rows = rowsOf(d.b);
+    // 404 = compra sem mensagens no chat (o portal mostra a lista vazia).
+    // Outros erros (429, 401…) nunca encerram: o relógio da caminhada tenta de novo.
+    if (!(d.s >= 200 && d.s < 300) && d.s !== 404) return;
+    var rows = d.s === 404 ? [] : rowsOf(d.b);
     if (!rows) return;
     var page = pageOf(d.u);
     pageSize = sizeOf(d.u) || pageSize;
     if (seenPages[page] === undefined || rows.length > seenPages[page]) seenPages[page] = rows.length;
+    if (rows.length) pageTop[page] = newestOf(rows);
+    if (pageTop[0] && pageTop[1]) newestFirst = pageTop[0] >= pageTop[1];
     respostas++;
     var fresh = [];
     for (var i = 0; i < rows.length; i++) {
@@ -267,10 +286,17 @@
     // Respostas do chat já chegando também provam que o painel está aberto
     // (cobre o caso de o título do painel ter outro texto no portal).
     if (panelOpen() || Object.keys(seenPages).length) return true;
-    if (Date.now() - lastPanelClick < 5000) return false;
+    var esperando = registeredAt ? Date.now() - registeredAt : 0;
+    if (esperando > PANEL_TIMEOUT_MS) {
+      // Sem chat (sessão ainda não aberta, painel com outro formato…): o ciclo do administrador pula a compra.
+      reportar('sem_chat');
+      setBadge('Chat não abriu — clique em “Mensagens” no portal para começar a captura', '#f59e0b');
+      return false;
+    }
+    if (panelClicks >= PANEL_MAX_CLICKS || Date.now() - lastPanelClick < PANEL_CLICK_GAP_MS) return false;
     var t = findPanelTrigger();
-    if (t) { lastPanelClick = Date.now(); t.click(); }
-    else if (registeredAt && Date.now() - registeredAt > 20000) {
+    if (t) { lastPanelClick = Date.now(); panelClicks++; t.click(); }
+    else if (esperando > 20000) {
       setBadge('Clique em “Mensagens” no portal para começar a captura', '#f59e0b');
     }
     return false;
@@ -315,8 +341,26 @@
     for (var k in ARROWS) if (ARROWS[k].indexOf(t) !== -1) return k;
     return /^\d{1,4}$/.test(t) ? 'num' : null;
   }
-  // O paginador é o menor bloco que contém seta para trás, seta para frente e números.
+  // Paginador do PrimeNG na lista do chat (p-dataView "dv-mensagens-disputa"): as setas são
+  // botões só com ícone SVG, sem texto. Com uma página só, o portal esconde o paginador.
+  var PRIME_ARROWS = { first: '.p-paginator-first', prev: '.p-paginator-prev', next: '.p-paginator-next', last: '.p-paginator-last' };
+  function primePager() {
+    var root = document.querySelector('.dv-mensagens-disputa') || document.querySelector('app-mensagens-da-compra');
+    var pag = root && root.querySelector('.p-paginator');
+    if (!pag || !visible(pag)) return null;
+    var leaves = [];
+    for (var k in PRIME_ARROWS) {
+      var el = pag.querySelector(PRIME_ARROWS[k]);
+      if (el) leaves.push({ el: el, kind: k, t: '' });
+    }
+    var pages = pag.querySelectorAll('.p-paginator-page');
+    for (var i = 0; i < pages.length; i++) leaves.push({ el: pages[i], kind: 'num', t: (pages[i].textContent || '').trim() });
+    return leaves;
+  }
+  // Outro formato de portal: o paginador é o menor bloco que contém seta para trás, seta para frente e números.
   function pager() {
+    var prime = primePager();
+    if (prime) return prime;
     var leaves = [];
     var all = document.querySelectorAll('button,a,li,span,i,mat-icon,div');
     for (var i = 0; i < all.length; i++) {
@@ -401,7 +445,7 @@
       q.clicked = true;
       q.base = respostas;
       q.since = Date.now();
-      q.moved = clickPager('last'); // sem ">>" clicável: já está na última página
+      q.moved = clickPager(newestKind()); // seta desabilitada: já está na página das mais novas
       return;
     }
     if (q.moved && respostas === q.base) { if (Date.now() - q.since > PAGE_TIMEOUT_MS) desistirRapido(); return; }
@@ -481,18 +525,22 @@
     }
     // Histórico importado e tudo confirmado pelo servidor: compra atualizada.
     if (!queue.length && !sending) reportar('concluido');
-    // Ao vivo: as mensagens novas ficam na última página.
+    // Ao vivo: as mensagens novas ficam na página das mais novas.
     if (Date.now() - lastLiveRefresh > LIVE_REFRESH_MS) {
       lastLiveRefresh = Date.now();
       liveRefresh();
     }
   }
 
-  // Faz o portal buscar de novo a última página (onde chegam as novas).
+  // Página onde chegam as mensagens novas: a primeira (o portal lista da mais nova para a mais antiga).
+  function newestKind() { return newestFirst ? 'first' : 'last'; }
+
+  // Faz o portal buscar de novo a página das mais novas.
   function liveRefresh() {
-    if (clickPager('last')) return;               // surgiu página nova
-    if (clickPager('prev')) {                     // já na última: sai e volta
-      setTimeout(function () { clickPager('last'); }, 1500);
+    var newest = newestKind();
+    if (clickPager(newest)) return;               // estava em outra página: volta para as mais novas
+    if (clickPager(newestFirst ? 'next' : 'prev')) { // já nela: sai e volta
+      setTimeout(function () { clickPager(newest); }, 1500);
       return;
     }
     var t = findPanelTrigger();                   // página única: fecha e reabre o painel

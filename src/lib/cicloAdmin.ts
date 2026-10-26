@@ -24,7 +24,7 @@ export const VERIFICAR_NOVAS_MS = 20000;
 /** Versão mínima da extensão (avisa o fim da captura e reenvia o estado de abas já abertas). */
 const VERSAO_MINIMA = "1.0.0";
 
-export type EstadoCiclo = "fila" | "abrindo" | "capturando" | "captcha" | "concluido" | "incompleto" | "encerrado" | "nao_monitorada" | "sem_resposta" | "tempo" | "erro" | "parado";
+export type EstadoCiclo = "fila" | "abrindo" | "capturando" | "captcha" | "concluido" | "incompleto" | "encerrado" | "nao_monitorada" | "sem_resposta" | "sem_chat" | "tempo" | "erro" | "parado";
 export type Situacao = { estado: EstadoCiclo; synced?: number; detalhe?: string };
 
 /** rodando: robô ligado. ciclo: volta atual pela fila (ao terminar uma, começa a próxima sem pausa). */

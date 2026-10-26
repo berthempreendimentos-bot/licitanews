@@ -19,6 +19,7 @@ const ROTULO: Record<EstadoCiclo, { texto: string; cor: string }> = {
   concluido: { texto: "Atualizado", cor: "bg-ok/12 text-ok" },
   incompleto: { texto: "Parcial — pulado", cor: "bg-warn/15 text-warn" },
   sem_resposta: { texto: "Sem resposta — pulado", cor: "bg-danger/10 text-danger" },
+  sem_chat: { texto: "Sem chat — pulado", cor: "bg-warn/15 text-warn" },
   encerrado: { texto: "Encerrado", cor: "bg-bg text-muted" },
   nao_monitorada: { texto: "Não monitorada", cor: "bg-bg text-muted" },
   tempo: { texto: "Tempo esgotado", cor: "bg-danger/10 text-danger" },
