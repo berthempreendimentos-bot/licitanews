@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, Loader2, Play, RefreshCw, ShieldCheck, Square } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2, Play, RefreshCw, Square } from "lucide-react";
 import { Empty, PageHeader, StatCard } from "@/components/ui";
 import { SomenteAdmin } from "@/components/SomenteAdmin";
 import {
-  ABAS_POR_JANELA, carregar, iniciar, inicioAutomatico, JANELAS, pararCiclo, setInicioAutomatico,
+  ABAS_POR_JANELA, carregar, iniciar, JANELAS, pararCiclo,
   TAMANHO_LOTE, TEMPO_LIMITE_MS, useCiclo, VERIFICAR_NOVAS_MS, type EstadoCiclo,
 } from "@/lib/cicloAdmin";
 import { dataBR } from "@/lib/format";
@@ -38,7 +37,6 @@ export default function Page() {
 function MonitoramentoAdmin() {
   // O ciclo roda em segundo plano (src/lib/cicloAdmin.ts): esta página só mostra e controla.
   const { compras, recentes, situacao, rodando, ciclo, lote, carregando, erro, aviso } = useCiclo();
-  const [auto, setAuto] = useState(inicioAutomatico);
 
   const valores = Object.values(situacao);
   const feitos = valores.filter((s) => !["fila", "abrindo", "capturando", "captcha"].includes(s.estado)).length;
@@ -74,14 +72,8 @@ function MonitoramentoAdmin() {
       </div>
 
       <div className="card p-4 mb-4 space-y-2 text-sm">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-          <ShieldCheck size={16} className="text-brand" />
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={auto} onChange={(e) => { setAuto(e.target.checked); setInicioAutomatico(e.target.checked); }} />
-            Iniciar sozinho ao entrar no PEPPACORP
-          </label>
-        </div>
         <p className="text-xs text-muted">
+          O robô só começa quando você clica em Iniciar ciclo.
           Todas as licitações que os usuários adicionarem no Monitoramento são capturadas por este robô, e as mensagens vão para cada usuário.
           Cada lote abre {JANELAS} janelas com {ABAS_POR_JANELA} abas; o próximo lote só abre quando o atual termina.
           Ao terminar a fila, um novo ciclo começa sozinho, sem pausa, até você clicar em Parar.

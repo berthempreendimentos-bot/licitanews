@@ -232,14 +232,3 @@ export function encerrarSessao() {
   conhecidas = null;
   set({ compras: [], recentes: [], situacao: {}, ciclo: 0, lote: 0, erro: "", aviso: "" });
 }
-
-// ===== Início automático (preferência deste navegador) =====
-const CHAVE_AUTO = "ciclo-admin-auto";
-
-export function inicioAutomatico(): boolean {
-  try { return localStorage.getItem(CHAVE_AUTO) !== "0"; } catch { return true; }
-}
-
-export function setInicioAutomatico(ligado: boolean) {
-  try { localStorage.setItem(CHAVE_AUTO, ligado ? "1" : "0"); } catch { /* sem acesso ao armazenamento */ }
-}
