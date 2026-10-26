@@ -11,20 +11,28 @@ import type { CompraAdmin } from "@/app/api/admin/monitoramento/route";
  * Fica neste módulo, e não numa página, para continuar rodando enquanto o administrador navega.
  */
 
-/** Cada lote abre JANELAS janelas minimizadas com ABAS_POR_JANELA compras cada. */
-export const JANELAS = 3;
-export const ABAS_POR_JANELA = 3;
+/**
+ * Cada lote abre JANELAS janelas minimizadas com ABAS_POR_JANELA compras cada.
+ * Poucas abas por vez: cada uma passa pelo captcha do portal ao carregar e, com muitas juntas,
+ * o Comprasnet recusa o acesso.
+ */
+export const JANELAS = 2;
+export const ABAS_POR_JANELA = 2;
+/** Intervalo entre uma abertura e a próxima (espalha os captchas). */
+const ESPACO_ABERTURAS_MS = 4000;
 export const TAMANHO_LOTE = JANELAS * ABAS_POR_JANELA;
 /** Tempo máximo para uma compra importar o chat antes de passar para a próxima. */
 export const TEMPO_LIMITE_MS = 5 * 60000;
 /** A compra precisa responder (portal carregado e logado) em até este tempo; senão é pulada. */
 const TEMPO_RESPOSTA_MS = 60000;
+/** Compras do mesmo lote com "acesso não autorizado" no portal a partir das quais o ciclo pausa. */
+const RECUSAS_PARA_PAUSAR = 2;
 /** De quanto em quanto tempo procura compras novas cadastradas pelos usuários. */
 export const VERIFICAR_NOVAS_MS = 20000;
 /** Versão mínima da extensão (avisa o fim da captura e reenvia o estado de abas já abertas). */
 const VERSAO_MINIMA = "1.0.0";
 
-export type EstadoCiclo = "fila" | "abrindo" | "capturando" | "captcha" | "concluido" | "incompleto" | "encerrado" | "nao_monitorada" | "sem_resposta" | "sem_chat" | "tempo" | "erro" | "parado";
+export type EstadoCiclo = "fila" | "abrindo" | "capturando" | "captcha" | "concluido" | "incompleto" | "encerrado" | "nao_monitorada" | "sem_resposta" | "sem_chat" | "sem_acesso" | "tempo" | "erro" | "parado";
 export type Situacao = { estado: EstadoCiclo; synced?: number; detalhe?: string };
 
 /** rodando: robô ligado. ciclo: volta atual pela fila (ao terminar uma, começa a próxima sem pausa). */
@@ -129,7 +137,7 @@ export function vigiar() {
 let aberturas: Promise<unknown> = Promise.resolve();
 function abrirEmOrdem(codigo: string, janela: number) {
   const r = aberturas.then(() => abrirNoComprasnet(codigo, false, janela));
-  aberturas = r.catch(() => {});
+  aberturas = r.catch(() => {}).then(() => esperar(ESPACO_ABERTURAS_MS));
   return r;
 }
 
@@ -186,6 +194,12 @@ async function rodarFila() {
     if (!lote.length) return;
     set({ lote: estado.lote + 1 });
     await Promise.all(lote.map((c, i) => atualizar(c, Math.floor(i / ABAS_POR_JANELA))));
+    // Várias recusas no mesmo lote = sessão do gov.br expirada: abrir mais abas só piora.
+    const recusadas = lote.filter((c) => estado.situacao[c]?.estado === "sem_acesso").length;
+    if (recusadas >= RECUSAS_PARA_PAUSAR) {
+      parar = true;
+      set({ aviso: "O Comprasnet recusou o acesso (sessão expirada ou verificação). Entre de novo no Comprasnet neste navegador e clique em Iniciar ciclo." });
+    }
   }
 }
 

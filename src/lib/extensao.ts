@@ -76,7 +76,7 @@ export function fecharNoComprasnet(codigo: string): Promise<boolean> {
   });
 }
 
-export type EstadoCaptura = "registrado" | "captcha" | "concluido" | "incompleto" | "encerrado" | "nao_monitorada" | "sem_chat";
+export type EstadoCaptura = "registrado" | "captcha" | "concluido" | "incompleto" | "encerrado" | "nao_monitorada" | "sem_chat" | "sem_acesso";
 
 /** Pede à aba já aberta da compra que avise de novo o estado da captura (extensão v0.6.0+). */
 export function pedirEstadoCaptura(codigo: string) {

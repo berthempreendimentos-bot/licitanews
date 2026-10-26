@@ -90,6 +90,44 @@ async function ingest(codigo, messages) {
   return { ok: true, via: 'servidor', data: res.data || {} };
 }
 
+// Abas de compra abertas aqui: aba -> código da compra. Quando o portal recusa o acesso, ele
+// redireciona a aba para /acesso-nao-autorizado (sem o código na URL) e só assim dá para saber qual era.
+async function abasLembradas() {
+  return (await chrome.storage.session.get('peppa_abas')).peppa_abas || {};
+}
+// Uma alteração de cada vez: várias abas abrindo/fechando juntas não podem sobrescrever umas às outras.
+let filaAbas = Promise.resolve();
+function alterarAbas(fn) {
+  filaAbas = filaAbas.then(async () => {
+    const m = await abasLembradas();
+    if (fn(m) !== false) await chrome.storage.session.set({ peppa_abas: m });
+  }).catch(() => {});
+  return filaAbas;
+}
+function lembrarAba(tabId, code) {
+  return alterarAbas((m) => { m[tabId] = code; });
+}
+chrome.tabs.onRemoved.addListener((tabId) => {
+  alterarAbas((m) => { if (!(tabId in m)) return false; delete m[tabId]; });
+});
+
+// Sessão do gov.br expirada ou verificação recusada: avisa o ciclo do administrador.
+const SEM_ACESSO = /^https:\/\/cnetmobile\.estaleiro\.serpro\.gov\.br\/.*\/(acesso-nao-autorizado|sessao-encerrada)/;
+chrome.tabs.onUpdated.addListener(async (tabId, info) => {
+  if (!info.url || !SEM_ACESSO.test(info.url)) return;
+  const code = (await abasLembradas())[tabId];
+  if (code) avisarEstado(code, 'sem_acesso', 0);
+});
+
+// Andamento da captura de uma compra: repassa às abas do PEPPACORP (ciclo do administrador).
+function avisarEstado(codigo, estado, synced) {
+  chrome.tabs.query({}).then((tabs) => {
+    for (const t of tabs) {
+      if (ehPeppacorp(t.url)) chrome.tabs.sendMessage(t.id, { action: 'peppa_capture_state', codigo_compra: codigo, estado: estado, synced: synced }).catch(() => {});
+    }
+  });
+}
+
 // Abre o acompanhamento da compra numa janela minimizada e sem som, reaproveitada
 // para todas as compras. Se a compra já estiver aberta em alguma aba, não abre de novo.
 // show = true (botão "Abrir no Comprasnet"): mostra a aba para a pessoa ver o portal.
@@ -102,6 +140,7 @@ async function openComprasnet(url, show, janela) {
   const tabs = await chrome.tabs.query({});
   const open = tabs.find((t) => t.url && t.url.indexOf('compra=' + code) !== -1);
   if (open) {
+    await lembrarAba(open.id, code);
     if (show) {
       await chrome.windows.update(open.windowId, { state: 'normal', focused: true });
       await chrome.tabs.update(open.id, { active: true });
@@ -110,6 +149,7 @@ async function openComprasnet(url, show, janela) {
   }
   if (show) {
     const tab = await chrome.tabs.create({ url: url, active: true });
+    await lembrarAba(tab.id, code);
     await chrome.windows.update(tab.windowId, { focused: true });
     return { ok: true, shown: true };
   }
@@ -119,13 +159,17 @@ async function openComprasnet(url, show, janela) {
     try {
       await chrome.windows.get(salvo);
       const tab = await chrome.tabs.create({ windowId: salvo, url: url, active: false });
+      await lembrarAba(tab.id, code);
       await chrome.tabs.update(tab.id, { muted: true });
       return { ok: true };
     } catch (e) { /* janela fechada (pelo usuário ou ao fechar a última aba): cria outra */ }
   }
   const w = await chrome.windows.create({ url: url, state: 'minimized' });
   await chrome.storage.session.set({ [chave]: w.id });
-  if (w.tabs && w.tabs[0]) await chrome.tabs.update(w.tabs[0].id, { muted: true });
+  if (w.tabs && w.tabs[0]) {
+    await lembrarAba(w.tabs[0].id, code);
+    await chrome.tabs.update(w.tabs[0].id, { muted: true });
+  }
   return { ok: true };
 }
 
@@ -262,12 +306,7 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     return true;
   }
   if (req.action === 'peppa_capture_state') {
-    // Andamento da captura de uma compra: repassa às abas do PEPPACORP (ciclo do administrador).
-    chrome.tabs.query({}).then((tabs) => {
-      for (const t of tabs) {
-        if (ehPeppacorp(t.url)) chrome.tabs.sendMessage(t.id, { action: 'peppa_capture_state', codigo_compra: req.codigo_compra, estado: req.estado, synced: req.synced }).catch(() => {});
-      }
-    });
+    avisarEstado(req.codigo_compra, req.estado, req.synced);
     return false;
   }
   if (req.action === 'peppa_capture_reset') {
@@ -286,8 +325,9 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     // Fecha as abas da compra (o ciclo do administrador fecha as que ele mesmo abriu).
     const code = String(req.codigo_compra || '');
     if (!/^\d{10,}$/.test(code)) { sendResponse({ ok: false }); return false; }
-    chrome.tabs.query({}).then(async (tabs) => {
-      const ids = tabs.filter((t) => t.url && t.url.indexOf('cnetmobile.estaleiro.serpro.gov.br') !== -1 && t.url.indexOf('compra=' + code) !== -1).map((t) => t.id);
+    Promise.all([chrome.tabs.query({}), abasLembradas()]).then(async ([tabs, lembradas]) => {
+      // Inclui as abas que o portal redirecionou (ex.: acesso não autorizado), já sem o código na URL.
+      const ids = tabs.filter((t) => lembradas[t.id] === code || (t.url && t.url.indexOf('cnetmobile.estaleiro.serpro.gov.br') !== -1 && t.url.indexOf('compra=' + code) !== -1)).map((t) => t.id);
       if (ids.length) await chrome.tabs.remove(ids).catch(() => {});
       sendResponse({ ok: true, closed: ids.length });
     });
