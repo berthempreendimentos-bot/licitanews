@@ -69,6 +69,22 @@ x-ingest-key: <chave em Configurações>
 
 Resposta: `{ ok, synced, mentions[] }`, ou `not_monitored` / `encerrado`. As mensagens são deduplicadas por `codigo_compra:chaveMensagemNaOrigem`.
 
+## API de dados do monitoramento (`/api/v1`)
+
+O que o ciclo de monitoramento captura no Comprasnet fica disponível para outros sistemas, planilhas e agentes de IA.
+Autenticação: header `x-api-key` com a chave da empresa (Configurações). Chave de administrador lê os dados de todos os usuários; as demais, só os próprios. Somente leitura, com CORS liberado.
+
+| Rota | O que devolve |
+|---|---|
+| `GET /api/v1` | Especificação OpenAPI 3.1 (pública) — importe no Postman/Insomnia ou registre como ferramenta de um agente |
+| `GET /api/v1/compras?status=Capturando` | Compras monitoradas: órgão, município/UF, situação, total de mensagens, última captura |
+| `GET /api/v1/mensagens?codigo_compra=…&desde=…&cursor=…&limite=…` | Chat do pregoeiro capturado; pagine com `proximo_cursor` |
+| `GET /api/v1/alertas?codigo_compra=…&desde=…` | Alertas do chat (menções à empresa, convocações, prazos) |
+
+```
+curl -H "x-api-key: <chave>" https://licitanews.vercel.app/api/v1/compras
+```
+
 ## Extensão PEPPACORP Monitor
 
 Pasta `extension/` (Chrome/Edge, Manifest V3). Baixe em **Conectar Robô** (rota `GET /api/extensao` gera o .zip), carregue sem compactação e clique em “Conectar extensão”.

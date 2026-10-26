@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Copy, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/ui";
 import { newId, useEmpresa } from "@/lib/store";
+import { useAdmin } from "@/lib/useAdmin";
 import { UFS } from "@/lib/pncp";
 import { ConfigIACard } from "@/components/ConfigIACard";
 import { DadosPropostaCard } from "@/components/DadosPropostaCard";
@@ -14,6 +15,7 @@ export default function Configuracoes() {
   const [form, setForm] = useState(empresa);
   const [ok, setOk] = useState(false);
   const [copied, setCopied] = useState(false);
+  const admin = useAdmin();
 
   useEffect(() => setForm(empresa), [empresa]);
 
@@ -59,9 +61,15 @@ export default function Configuracoes() {
           <div className="card p-5">
             <h2 className="font-bold text-brand">Token do robô</h2>
             <p className="text-xs text-muted mt-1">
-              Usada pela extensão para enviar o chat dos pregões. Ela só permite gravar mensagens: não dá acesso à sua conta.
-              Se vazar, gere outro.
+              Usado pela extensão para enviar o chat dos pregões e pela API de dados (<code>/api/v1</code>, header <code>x-api-key</code>)
+              para ler suas compras monitoradas, mensagens e alertas. Não dá login na sua conta, mas trate como senha:
+              se vazar, gere outro (a extensão precisa ser conectada de novo).
             </p>
+            {admin && (
+              <p className="text-xs text-warn mt-1">
+                Este é um token de administrador: pela API ele lê as compras e o chat capturado de todos os usuários.
+              </p>
+            )}
             <div className="mt-3 flex gap-2">
               <code className="input !bg-bg truncate text-xs">{empresa.ingest_key}</code>
               <button className="btn btn-ghost shrink-0" aria-label="Copiar" onClick={() => { void navigator.clipboard.writeText(empresa.ingest_key); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
