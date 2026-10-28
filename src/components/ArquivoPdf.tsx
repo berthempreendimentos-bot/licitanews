@@ -28,6 +28,59 @@ export async function removerPdf(path: string) {
   await fetchComLogin(`/api/documentos/arquivo?path=${encodeURIComponent(path)}`, { method: "DELETE" }).catch(() => {});
 }
 
+/** Nome seguro para arquivo dentro do .zip (sem acento problemático nem barra). */
+function nomeArquivo(s: string) {
+  return s.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 120) || "documento";
+}
+
+type DocParaZip = { tipo: string; descricao: string; numero: string; validade: string | null; link: string; arquivo?: ArquivoDoc };
+
+/**
+ * Baixa todos os PDFs de uma pasta num .zip (montado no navegador) com um índice.txt
+ * listando cada documento, validade e link. Devolve quantos PDFs entraram.
+ */
+export async function baixarPastaZip(nomePasta: string, docs: DocParaZip[], onProgresso?: (feitos: number, total: number) => void) {
+  const { zipSync, strToU8 } = await import("fflate");
+  const arquivos: Record<string, Uint8Array> = {};
+  const usados = new Set<string>();
+  const comPdf = docs.filter((d) => d.arquivo);
+  const falhas: string[] = [];
+  let feitos = 0;
+  onProgresso?.(0, comPdf.length);
+  for (const d of comPdf) {
+    const base = nomeArquivo(d.descricao ? `${d.tipo} - ${d.descricao}` : d.tipo);
+    let nome = `${base}.pdf`;
+    for (let i = 2; usados.has(nome.toLowerCase()); i++) nome = `${base} (${i}).pdf`;
+    try {
+      const { url } = await fetchComLogin(`/api/documentos/arquivo?path=${encodeURIComponent(d.arquivo!.path)}`);
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(String(r.status));
+      arquivos[nome] = new Uint8Array(await r.arrayBuffer());
+      usados.add(nome.toLowerCase());
+    } catch {
+      falhas.push(d.descricao || d.tipo);
+    }
+    onProgresso?.(++feitos, comPdf.length);
+  }
+  const linhas = docs.map((d) => [
+    `• ${d.tipo}${d.descricao ? ` — ${d.descricao}` : ""}`,
+    d.numero && `  Número: ${d.numero}`,
+    `  Validade: ${d.validade ? d.validade.split("-").reverse().join("/") : "sem validade"}`,
+    d.link && `  Link: ${d.link}`,
+    !d.arquivo && "  (sem PDF no PEPPACORP)",
+  ].filter(Boolean).join("\r\n"));
+  if (falhas.length) linhas.push(`\r\nNão foi possível baixar: ${falhas.join(", ")}`);
+  arquivos["indice.txt"] = strToU8(`Pasta: ${nomePasta}\r\n\r\n${linhas.join("\r\n\r\n")}\r\n`);
+  // PDF já é comprimido: guardar sem recomprimir deixa o zip rápido.
+  const zip = zipSync(arquivos, { level: 0 });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([zip as BlobPart], { type: "application/zip" }));
+  a.download = `${nomeArquivo(nomePasta)}.zip`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  return { pdfs: comPdf.length - falhas.length, falhas };
+}
+
 /** Área para escolher ou arrastar o PDF. Mostra o atual (com Visualizar) ou o novo escolhido. */
 export function UploadPdf({ atual, novo, onEscolher, onRemover, onVer }: {
   atual?: ArquivoDoc;

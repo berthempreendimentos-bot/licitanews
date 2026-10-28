@@ -3,17 +3,17 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Eye, ExternalLink, FilePlus2, FileUp, KanbanSquare, Loader2, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { Download, Eye, ExternalLink, FilePlus2, FileUp, Folder, FolderPlus, KanbanSquare, Loader2, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { Empty, PageHeader, StatCard } from "@/components/ui";
 import { AnaliseView } from "@/components/AnaliseView";
 import { imprimirRelatorio, nomeDoRelatorio, RelatorioEdital } from "@/components/RelatorioEdital";
-import { enviarPdf, removerPdf, UploadPdf, VisualizarPdf, type ArquivoDoc } from "@/components/ArquivoPdf";
+import { baixarPastaZip, enviarPdf, removerPdf, UploadPdf, VisualizarPdf, type ArquivoDoc } from "@/components/ArquivoPdf";
 import { IALendo } from "@/components/IALendo";
 import { AnalisesSalvas } from "@/components/AnalisesSalvas";
 import { db, newId, useCollection, useEmpresa } from "@/lib/store";
 import { cabecalhosIA, iaDaEmpresa } from "@/lib/ia";
 import { dataBR, diasAte, nowIso } from "@/lib/format";
-import { TIPOS_DOCUMENTO, type AnaliseEdital, type DocumentoEmpresa } from "@/lib/types";
+import { TIPOS_DOCUMENTO, type AnaliseEdital, type DocumentoEmpresa, type PastaDocumentos } from "@/lib/types";
 
 // ------------------------------------------------------------------- Certidões
 function statusDoc(d: DocumentoEmpresa) {
@@ -25,9 +25,12 @@ function statusDoc(d: DocumentoEmpresa) {
   return { label: "Válido", cls: "bg-neutral-200 text-black", dias };
 }
 
-function DocForm({ doc, onClose, onVer }: { doc: DocumentoEmpresa | null; onClose: () => void; onVer: (d: DocumentoEmpresa) => void }) {
+function DocForm({ doc, pastaInicial, onClose, onVer }: {
+  doc: DocumentoEmpresa | null; pastaInicial: string | null; onClose: () => void; onVer: (d: DocumentoEmpresa) => void;
+}) {
+  const { items: pastas } = useCollection("pastas");
   const [f, setF] = useState<DocumentoEmpresa>(doc ?? {
-    id: newId(), tipo: TIPOS_DOCUMENTO[0], descricao: "", numero: "", emissao: null, validade: null, link: "", observacao: "", created_at: nowIso(),
+    id: newId(), tipo: TIPOS_DOCUMENTO[0], descricao: "", numero: "", emissao: null, validade: null, link: "", pasta_id: pastaInicial, observacao: "", created_at: nowIso(),
   });
   const set = <K extends keyof DocumentoEmpresa>(k: K, v: DocumentoEmpresa[K]) => setF((x) => ({ ...x, [k]: v }));
   // PDF: novo escolhido (enviado ao salvar) ou o atual marcado para remover.
@@ -64,6 +67,12 @@ function DocForm({ doc, onClose, onVer }: { doc: DocumentoEmpresa | null; onClos
           <h2 className="font-bold text-brand">{doc ? "Editar documento" : "Novo documento"}</h2>
           <button type="button" onClick={onClose} aria-label="Fechar"><X size={18} /></button>
         </div>
+        <label className="block text-xs font-semibold text-muted">Pasta
+          <select className="input mt-1" value={f.pasta_id ?? ""} onChange={(e) => set("pasta_id", e.target.value || null)}>
+            <option value="">Sem pasta</option>
+            {[...pastas].sort((a, b) => a.nome.localeCompare(b.nome)).map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+          </select>
+        </label>
         <select className="input" value={f.tipo} onChange={(e) => set("tipo", e.target.value)}>
           {TIPOS_DOCUMENTO.map((t) => <option key={t}>{t}</option>)}
         </select>
@@ -98,27 +107,109 @@ function DocForm({ doc, onClose, onVer }: { doc: DocumentoEmpresa | null; onClos
   );
 }
 
+/** Filtro da lista: todas, sem pasta ou o id de uma pasta. */
+type FiltroPasta = "todas" | "sem" | string;
+
+function BarraPastas({ pastas, docs, filtro, setFiltro }: {
+  pastas: PastaDocumentos[]; docs: DocumentoEmpresa[]; filtro: FiltroPasta; setFiltro: (f: FiltroPasta) => void;
+}) {
+  const ids = new Set(pastas.map((p) => p.id));
+  // Documento de pasta excluída conta como "sem pasta".
+  const semPasta = docs.filter((d) => !d.pasta_id || !ids.has(d.pasta_id)).length;
+  const chip = (k: FiltroPasta, label: string, n: number) => (
+    <button key={k} onClick={() => setFiltro(k)}
+      className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold ${filtro === k ? "bg-black text-white" : "border border-border text-muted hover:text-black"}`}>
+      {k !== "todas" && k !== "sem" && <Folder size={14} />}{label}
+      <span className={`text-[11px] ${filtro === k ? "text-white/70" : "text-muted"}`}>{n}</span>
+    </button>
+  );
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-2">
+      {chip("todas", "Todas", docs.length)}
+      {[...pastas].sort((a, b) => a.nome.localeCompare(b.nome)).map((p) => chip(p.id, p.nome, docs.filter((d) => d.pasta_id === p.id).length))}
+      {semPasta > 0 && pastas.length > 0 && chip("sem", "Sem pasta", semPasta)}
+      <button className="btn btn-ghost !py-1.5" onClick={() => {
+        const nome = prompt("Nome da nova pasta (ex.: Habilitação 2026, Pregão 12/2026)")?.trim();
+        if (!nome) return;
+        const p: PastaDocumentos = { id: newId(), nome, created_at: nowIso() };
+        db.upsert("pastas", p);
+        setFiltro(p.id);
+      }}><FolderPlus size={14} /> Nova pasta</button>
+    </div>
+  );
+}
+
 function Certidoes() {
-  const { items } = useCollection("documentos");
+  const { items: todos } = useCollection("documentos");
+  const { items: pastas } = useCollection("pastas");
+  const [filtro, setFiltro] = useState<FiltroPasta>("todas");
   const [edit, setEdit] = useState<DocumentoEmpresa | null | "new">(null);
   const [vendo, setVendo] = useState<DocumentoEmpresa | null>(null);
+  const [baixando, setBaixando] = useState("");
+  const pasta = pastas.find((p) => p.id === filtro) ?? null;
+  const ids = new Set(pastas.map((p) => p.id));
+  const items = filtro === "todas" ? todos
+    : filtro === "sem" ? todos.filter((d) => !d.pasta_id || !ids.has(d.pasta_id))
+      : todos.filter((d) => d.pasta_id === filtro);
   const ordenados = [...items].sort((a, b) => (a.validade ?? "9999").localeCompare(b.validade ?? "9999"));
   const vencidos = items.filter((d) => (statusDoc(d).dias ?? 1) < 0).length;
   const vencendo = items.filter((d) => { const x = statusDoc(d).dias; return x != null && x >= 0 && x <= 30; }).length;
 
+  async function baixar() {
+    const nome = pasta?.nome ?? (filtro === "sem" ? "Documentos sem pasta" : "Todos os documentos");
+    if (!ordenados.some((d) => d.arquivo) && !confirm("Nenhum documento aqui tem PDF no PEPPACORP. Baixar só o índice?")) return;
+    try {
+      const r = await baixarPastaZip(nome, ordenados, (feitos, total) => setBaixando(total ? `${feitos}/${total}` : "…"));
+      if (r.falhas.length) alert(`Não foi possível baixar ${r.falhas.length} PDF(s): ${r.falhas.join(", ")}. Eles estão listados no indice.txt.`);
+    } catch (e) {
+      alert(`Falha ao montar o .zip: ${(e as Error).message}`);
+    } finally {
+      setBaixando("");
+    }
+  }
+
+  function renomear() {
+    if (!pasta) return;
+    const nome = prompt("Novo nome da pasta", pasta.nome)?.trim();
+    if (nome && nome !== pasta.nome) db.update("pastas", pasta.id, { nome });
+  }
+
+  function excluirPasta() {
+    if (!pasta) return;
+    const n = items.length;
+    if (!confirm(n ? `Excluir a pasta "${pasta.nome}"? Os ${n} documento(s) dela não são apagados: ficam em "Sem pasta".` : `Excluir a pasta "${pasta.nome}"?`)) return;
+    items.forEach((d) => db.update("documentos", d.id, { pasta_id: null }));
+    db.remove("pastas", pasta.id);
+    setFiltro("todas");
+  }
+
+  const cadastrar = <button className="btn btn-primary" onClick={() => setEdit("new")}><Plus size={14} /> Cadastrar documento</button>;
   return (
     <>
+      <BarraPastas pastas={pastas} docs={todos} filtro={pasta || filtro === "sem" ? filtro : "todas"} setFiltro={setFiltro} />
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div className="grid grid-cols-3 gap-3 flex-1 max-w-2xl">
-          <StatCard label="Documentos" value={items.length} />
+          <StatCard label={pasta ? `Em ${pasta.nome}` : "Documentos"} value={items.length} />
           <StatCard label="Vencendo em 30 dias" value={vencendo} accent={vencendo > 0} />
           <StatCard label="Vencidos" value={vencidos} accent={vencidos > 0} />
         </div>
-        <button className="btn btn-primary" onClick={() => setEdit("new")}><Plus size={14} /> Novo documento</button>
+        <div className="flex flex-wrap gap-2">
+          {pasta && <>
+            <button className="btn btn-ghost" onClick={renomear}><Pencil size={14} /> Renomear</button>
+            <button className="btn btn-ghost" onClick={excluirPasta}><Trash2 size={14} /> Excluir pasta</button>
+          </>}
+          {items.length > 0 && (
+            <button className="btn btn-ghost" disabled={!!baixando} onClick={() => void baixar()}>
+              {baixando ? <><Loader2 size={14} className="animate-spin" /> Baixando {baixando}</> : <><Download size={14} /> {pasta ? "Baixar pasta (.zip)" : "Baixar tudo (.zip)"}</>}
+            </button>
+          )}
+          <button className="btn btn-primary" onClick={() => setEdit("new")}><Plus size={14} /> Novo documento</button>
+        </div>
       </div>
       {items.length === 0 ? (
-        <Empty title="Cofre de certidões" text="Cadastre certidões e documentos de habilitação com a validade. Você recebe alerta 15 dias antes de vencer e os vencimentos aparecem na Agenda."
-          action={<button className="btn btn-primary" onClick={() => setEdit("new")}><Plus size={14} /> Cadastrar documento</button>} />
+        pasta
+          ? <Empty title={`Pasta "${pasta.nome}" vazia`} text="Cadastre um documento nesta pasta ou mova um existente para cá: abra o documento e escolha a pasta." action={cadastrar} />
+          : <Empty title="Cofre de certidões" text="Cadastre certidões e documentos de habilitação com a validade. Você recebe alerta 15 dias antes de vencer e os vencimentos aparecem na Agenda." action={cadastrar} />
       ) : (
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
@@ -133,7 +224,8 @@ function Certidoes() {
                   const st = statusDoc(d);
                   return (
                     <tr key={d.id} onClick={() => setEdit(d)} className="cursor-pointer border-b border-border last:border-0 hover:bg-bg">
-                      <td className="px-4 py-2.5"><div className="font-medium">{d.tipo}</div>{d.descricao && <div className="text-[11px] text-muted">{d.descricao}</div>}</td>
+                      <td className="px-4 py-2.5"><div className="font-medium">{d.tipo}</div>{d.descricao && <div className="text-[11px] text-muted">{d.descricao}</div>}
+                        {!pasta && d.pasta_id && ids.has(d.pasta_id) && <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted"><Folder size={11} /> {pastas.find((p) => p.id === d.pasta_id)?.nome}</div>}</td>
                       <td className="px-4 py-2.5 text-muted">{d.numero || "—"}</td>
                       <td className="px-4 py-2.5 whitespace-nowrap">{dataBR(d.emissao ? `${d.emissao}T12:00:00` : null)}</td>
                       <td className="px-4 py-2.5 whitespace-nowrap">{dataBR(d.validade ? `${d.validade}T12:00:00` : null)}</td>
@@ -152,7 +244,7 @@ function Certidoes() {
           </div>
         </div>
       )}
-      {edit && <DocForm doc={edit === "new" ? null : edit} onClose={() => setEdit(null)} onVer={setVendo} />}
+      {edit && <DocForm doc={edit === "new" ? null : edit} pastaInicial={pasta?.id ?? null} onClose={() => setEdit(null)} onVer={setVendo} />}
       {vendo?.arquivo && <VisualizarPdf arquivo={vendo.arquivo} titulo={vendo.descricao || vendo.tipo} onClose={() => setVendo(null)} />}
     </>
   );

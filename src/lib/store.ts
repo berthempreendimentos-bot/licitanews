@@ -98,7 +98,7 @@ async function persistDelete(name: CollectionName, id: string) {
 
 const COLECOES: CollectionName[] = [
   "empresa", "pregoes", "chat_messages", "alerts", "propostas", "analises",
-  "favoritos", "crm_cards", "radar_profiles", "agenda_events", "documentos",
+  "favoritos", "crm_cards", "radar_profiles", "agenda_events", "documentos", "pastas",
 ];
 
 /**

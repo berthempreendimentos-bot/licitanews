@@ -167,7 +167,16 @@ export type DocumentoEmpresa = {
   link: string; // onde o arquivo está guardado (Drive, OneDrive…)
   /** PDF enviado para o PEPPACORP (Supabase Storage, bucket "documentos"). */
   arquivo?: { path: string; nome: string; tamanho: number };
+  /** Pasta onde o documento fica (coleção "pastas"); sem pasta quando vazio. */
+  pasta_id?: string | null;
   observacao: string;
+  created_at: string;
+};
+
+/** Pasta para agrupar os documentos da empresa (ex.: "Habilitação 2026", "Pregão 12/2026"). */
+export type PastaDocumentos = {
+  id: string;
+  nome: string;
   created_at: string;
 };
 
@@ -272,6 +281,7 @@ export type Collections = {
   agenda_events: AgendaEvent;
   empresa: Empresa;
   documentos: DocumentoEmpresa;
+  pastas: PastaDocumentos;
   analises: AnaliseEdital;
   propostas: Proposta;
 };
