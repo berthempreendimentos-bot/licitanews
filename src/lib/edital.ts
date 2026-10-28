@@ -52,6 +52,21 @@ const obj = (props: Record<string, unknown>) => ({
   additionalProperties: false,
 });
 
+/** Exigência com o item/subitem e a página do edital; vira texto "… (item 8.2.1, p. 12)" depois da IA. */
+const exigArr = { type: "array", items: obj({ texto: str, item: str, pagina: str }) } as const;
+type Exigencia = { texto: string; item: string; pagina: string };
+
+const vazioRef = (v?: string) => !v?.trim() || /^n[ãa]o informad[oa]$/i.test(v.trim()) || v.trim() === "-";
+
+/** Junta texto, item e página no formato que as telas e o relatório já mostram como etiqueta. */
+function comReferencia(e: Exigencia | string): string {
+  if (typeof e === "string") return e;
+  const item = vazioRef(e.item) ? "" : e.item.trim().replace(/^(item|subitem|cláusula|cl\.)\s*/i, "");
+  const pag = vazioRef(e.pagina) ? "" : e.pagina.trim().replace(/^(p\.|pág\.?|página)\s*/i, "");
+  const ref = [item && `item ${item}`, pag && `p. ${pag}`].filter(Boolean).join(", ");
+  return ref ? `${e.texto.trim()} (${ref})` : e.texto.trim();
+}
+
 const SCHEMA = obj({
   resumo: str,
   dados_gerais: obj({
@@ -61,8 +76,8 @@ const SCHEMA = obj({
   }),
   itens: { type: "array", items: obj({ lote: str, numero: str, descricao: str, quantidade: str, unidade: str, valor_estimado: str, valor_total: str }) },
   lotes: { type: "array", items: obj({ nome: str, valor_total: str }) },
-  habilitacao: obj({ juridica: strArr, fiscal_trabalhista: strArr, economico_financeira: strArr, tecnica: strArr }),
-  declaracoes: strArr,
+  habilitacao: obj({ juridica: exigArr, fiscal_trabalhista: exigArr, economico_financeira: exigArr, tecnica: exigArr }),
+  declaracoes: exigArr,
   prazos: { type: "array", items: obj({ evento: str, quando: str }) },
   proposta: obj({ exigencias: strArr, validade_proposta: str, amostras: str, garantia: str }),
   execucao: obj({ prazo_entrega: str, local: str, pagamento: str, vigencia: str, penalidades: strArr }),
@@ -86,7 +101,10 @@ Leia o edital e os anexos enviados e preencha o JSON pedido, em português.
   - "descricao": o produto e as especificações principais, em até 250 caracteres.
   - "valor_estimado": valor UNITÁRIO estimado (ou mediana) em reais, ex.: "R$ 599,00"; "valor_total": valor total do item (quantidade × unitário), ex.: "R$ 8.985,00". Sem valor no edital: "Não informado".
 - "lotes": cada lote/grupo com o "valor_total" informado no edital (ex.: "R$ 448.368,65"); edital sem lotes: lista vazia.
-- "habilitacao": cada exigência em uma linha objetiva (ex.: "Índice de Liquidez Geral ≥ 1,0", "Atestado de fornecimento de 30% do quantitativo").
+- "habilitacao" e "declaracoes": cada exigência em um objeto:
+  - "texto": a exigência em uma linha objetiva, sem a referência (ex.: "Índice de Liquidez Geral ≥ 1,0", "Atestado de fornecimento de 30% do quantitativo").
+  - "item": o número do item/subitem do edital onde a exigência está, como aparece no edital (ex.: "8.2.1", "9.4.3, alínea b", "Anexo II, item 3"). Sempre procure e informe; só use "" se não houver numeração.
+  - "pagina": o número da página do PDF onde a exigência está (ex.: "12"; se ocupar mais de uma, "12-13"). Só "" se não for possível identificar.
 - "riscos": pontos que podem causar inabilitação, desclassificação, prejuízo ou dificuldade na execução (prazos curtos, multas altas, exigências restritivas, amostras, garantia, pagamento demorado). Classifique a gravidade.
 - "pontos_impugnacao": cláusulas possivelmente ilegais ou restritivas à competitividade, com o fundamento legal (ex.: "Art. 67 da Lei 14.133 — exigência de atestado acima de 50% do quantitativo"). Seja criterioso: só aponte o que tem base.
 - "checklist": passos práticos e ordenados para o fornecedor participar (documentos a separar, declarações, cadastro no portal, envio da proposta).
@@ -98,12 +116,20 @@ export { claudeConfigurado as iaConfigurada, type IAEscolhida } from "./iaServid
 
 export type EntradaEdital = { pdfs: { nome: string; base64: string }[]; texto?: string };
 
-export function analisarEdital(entrada: EntradaEdital, ia: IAEscolhida = { provedor: "claude" }): Promise<ResultadoEdital> {
-  return gerarJsonIA<ResultadoEdital>(ia, {
+export async function analisarEdital(entrada: EntradaEdital, ia: IAEscolhida = { provedor: "claude" }): Promise<ResultadoEdital> {
+  const r = await gerarJsonIA<ResultadoEdital>(ia, {
     sistema: SYSTEM,
     schema: SCHEMA,
     pdfs: entrada.pdfs,
     texto: [entrada.texto?.trim() ? `TEXTO DO EDITAL:\n${entrada.texto.trim()}` : "", "Analise o edital acima e preencha o JSON."].filter(Boolean).join("\n\n"),
     esforco: "high",
   });
+  // A IA devolve objetos { texto, item, pagina }; o resto do sistema guarda texto com a referência no fim.
+  const lista = (l: unknown) => (Array.isArray(l) ? (l as (Exigencia | string)[]).map(comReferencia).filter(Boolean) : []);
+  const h = r.habilitacao ?? ({} as ResultadoEdital["habilitacao"]);
+  return {
+    ...r,
+    habilitacao: { juridica: lista(h.juridica), fiscal_trabalhista: lista(h.fiscal_trabalhista), economico_financeira: lista(h.economico_financeira), tecnica: lista(h.tecnica) },
+    declaracoes: lista(r.declaracoes),
+  };
 }
