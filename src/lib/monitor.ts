@@ -109,15 +109,22 @@ function norm(s: string) {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
-/** Termos vigiados: palavras-chave + CNPJ (com e sem máscara) + razão social. */
+/** Termos vigiados: palavras-chave (incluindo CNPJs com/sem máscara) + CNPJ principal + razão social. */
 export function watchTerms(empresa: { cnpj: string; razao_social: string; palavras_chave: string[] }) {
-  const terms = [...empresa.palavras_chave];
+  const terms: string[] = [];
+  for (const k of empresa.palavras_chave) {
+    terms.push(k);
+    const d = k.replace(/\D/g, "");
+    if (d.length === 14) {
+      terms.push(d, d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5"));
+    }
+  }
   const digits = empresa.cnpj.replace(/\D/g, "");
   if (digits.length === 14) {
     terms.push(digits, digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5"));
   }
   if (empresa.razao_social.trim().length >= 4) terms.push(empresa.razao_social.trim());
-  return terms.filter(Boolean);
+  return Array.from(new Set(terms.filter(Boolean)));
 }
 
 export function findMention(texto: string, terms: string[]): string | null {

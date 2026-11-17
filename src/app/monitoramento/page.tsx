@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Plus, Trash2, X, Square, Play, ExternalLink, Building2, MapPin, BellRing, Search, ShieldCheck } from "lucide-react";
+import { Plus, Trash2, X, Square, Play, ExternalLink, Building2, MapPin, BellRing, Search, ShieldCheck, Eye } from "lucide-react";
 import { Empty, PageHeader, StatCard } from "@/components/ui";
 import { corEvento, EventoTag } from "@/components/EventoTag";
 import { db, newId, useCollection, useEmpresa } from "@/lib/store";
@@ -17,38 +17,275 @@ function Keywords() {
   const { empresa, save } = useEmpresa();
   const [term, setTerm] = useState("");
   const [info, setInfo] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTerm, setModalTerm] = useState("");
+  const [modalInfo, setModalInfo] = useState("");
+  const [modalBusca, setModalBusca] = useState("");
 
-  function add(e: React.FormEvent) {
-    e.preventDefault();
-    const t = term.trim();
-    if (!t || empresa.palavras_chave.some((k) => k.toLowerCase() === t.toLowerCase())) return setTerm("");
-    save({ palavras_chave: [...empresa.palavras_chave, t] });
-    const n = retroSearch(t);
-    setInfo(n ? `Busca retroativa: ${n} menção(ões) encontradas nas mensagens já capturadas.` : "Termo salvo. Nenhuma menção nas mensagens já capturadas.");
-    setTerm("");
+  // Fecha o modal ao apertar a tecla ESC
+  useEffect(() => {
+    if (!modalOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setModalOpen(false);
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [modalOpen]);
+
+  function adicionarTermos(texto: string, ehModal: boolean) {
+    const pedacos = texto.split(",").map((s) => s.trim()).filter(Boolean);
+    if (!pedacos.length) return;
+
+    // Obtém sempre os dados mais recentes para nunca sobrescrever
+    const empresaAtual = db.get("empresa")[0] ?? empresa;
+    const listaAtual = empresaAtual.palavras_chave || [];
+    const existentes = new Set(listaAtual.map((k) => k.toLowerCase()));
+    const novos: string[] = [];
+    let totalMencoes = 0;
+
+    for (const p of pedacos) {
+      if (!existentes.has(p.toLowerCase())) {
+        existentes.add(p.toLowerCase());
+        novos.push(p);
+        totalMencoes += retroSearch(p);
+      }
+    }
+
+    if (novos.length === 0) {
+      const msg = "Esse termo já está cadastrado.";
+      if (ehModal) setModalInfo(msg); else setInfo(msg);
+      return;
+    }
+
+    const atualizada = [...listaAtual, ...novos];
+    save({ palavras_chave: atualizada });
+
+    const msg = totalMencoes > 0
+      ? `Adicionado! ${totalMencoes} menção(ões) encontrada(s) nas mensagens já capturadas.`
+      : `Adicionado com sucesso (${novos.length} termo(s)).`;
+
+    if (ehModal) {
+      setModalInfo(msg);
+      setModalTerm("");
+    } else {
+      setInfo(msg);
+      setTerm("");
+    }
   }
 
+  function removerTermo(t: string) {
+    const empresaAtual = db.get("empresa")[0] ?? empresa;
+    const listaAtual = empresaAtual.palavras_chave || [];
+    save({ palavras_chave: listaAtual.filter((x) => x !== t) });
+  }
+
+  const total = empresa.palavras_chave?.length ?? 0;
+  const buscaLimpa = modalBusca.trim().toLowerCase();
+  const palavrasFiltradas = buscaLimpa
+    ? (empresa.palavras_chave || []).filter((k) => k.toLowerCase().includes(buscaLimpa))
+    : (empresa.palavras_chave || []);
+
   return (
-    <div className="card p-4">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">Palavras-chave do alerta — valem para todos os pregões</div>
-      <p className="text-xs text-muted mt-1">
-        Além destes termos, vigiamos o CNPJ e a razão social cadastrados em Configurações.
-      </p>
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {empresa.palavras_chave.length === 0 && <span className="text-sm text-muted">Nenhuma palavra-chave ainda.</span>}
-        {empresa.palavras_chave.map((k) => (
-          <span key={k} className="badge bg-accent-soft text-accent !text-xs !py-1">
-            {k}
-            <button aria-label={`Remover ${k}`} onClick={() => save({ palavras_chave: empresa.palavras_chave.filter((x) => x !== k) })}><X size={12} /></button>
-          </span>
-        ))}
+    <>
+      <div className="card p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+              Palavras-chave do alerta — valem para todos os pregões
+            </div>
+            <p className="text-xs text-muted mt-0.5">
+              Além destes termos, vigiamos o CNPJ e a razão social cadastrados em Configurações.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => { setModalOpen(true); setModalInfo(""); }}
+            className="btn btn-ghost shrink-0 text-xs self-start sm:self-auto gap-1.5"
+            title="Abrir janela separada para gerenciar palavras"
+          >
+            <Eye size={14} /> Gerenciar em janela separada ({total})
+          </button>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 max-h-56 overflow-y-auto pr-1">
+          {total === 0 && <span className="text-sm text-muted">Nenhuma palavra-chave ainda.</span>}
+          {(empresa.palavras_chave || []).map((k) => (
+            <span key={k} className="badge bg-accent-soft text-accent !text-xs !py-1">
+              {k}
+              <button
+                type="button"
+                aria-label={`Remover ${k}`}
+                onClick={() => removerTermo(k)}
+                className="hover:text-danger ml-0.5"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+        </div>
+
+        <form
+          onSubmit={(e) => { e.preventDefault(); adicionarTermos(term, false); }}
+          className="mt-3 flex gap-2"
+        >
+          <input
+            className="input"
+            placeholder="Ex.: nome fantasia, CNPJ, item 3, recurso"
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+          />
+          <button className="btn btn-primary shrink-0">
+            <Plus size={14} /> Adicionar
+          </button>
+        </form>
+        {info && <div className="mt-2 text-xs text-ok">{info}</div>}
       </div>
-      <form onSubmit={add} className="mt-3 flex gap-2">
-        <input className="input" placeholder="Ex.: nome fantasia, item 3, recurso" value={term} onChange={(e) => setTerm(e.target.value)} />
-        <button className="btn btn-primary shrink-0"><Plus size={14} /> Adicionar</button>
-      </form>
-      {info && <div className="mt-2 text-xs text-ok">{info}</div>}
-    </div>
+
+      {/* Janela separada (Modal) para gerenciar todas as palavras-chave */}
+      {modalOpen && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"
+          onClick={() => setModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-palavras-titulo"
+        >
+          <div
+            className="card w-full max-w-2xl bg-surface p-5 sm:p-6 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Topo do modal */}
+            <div className="flex items-start justify-between pb-3 border-b border-border">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 id="modal-palavras-titulo" className="font-bold text-base text-brand">
+                    Palavras-chave do alerta
+                  </h2>
+                  <span className="badge bg-accent-soft text-brand !text-xs !py-0.5">
+                    {total} {total === 1 ? "palavra" : "palavras"}
+                  </span>
+                </div>
+                <p className="text-xs text-muted mt-1">
+                  Valem para todos os pregões. Vigiamos o chat e alertamos assim que qualquer um destes termos for mencionado.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                className="text-muted hover:text-brand p-1 rounded-lg hover:bg-accent-soft transition"
+                aria-label="Fechar janela"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Adicionar novas palavras */}
+            <div className="pt-4 pb-3">
+              <label className="block text-xs font-semibold text-brand mb-1.5">
+                Adicionar nova palavra-chave
+              </label>
+              <form
+                onSubmit={(e) => { e.preventDefault(); adicionarTermos(modalTerm, true); }}
+                className="flex gap-2"
+              >
+                <input
+                  className="input text-sm"
+                  placeholder="Ex.: nome da empresa, item específico, recurso..."
+                  value={modalTerm}
+                  onChange={(e) => setModalTerm(e.target.value)}
+                  autoFocus
+                />
+                <button type="submit" className="btn btn-primary shrink-0">
+                  <Plus size={14} /> Adicionar
+                </button>
+              </form>
+              <p className="text-[11px] text-muted mt-1">
+                Dica: você pode colar vários termos separados por vírgula.
+              </p>
+              {modalInfo && (
+                <div className="mt-2 text-xs text-ok font-medium bg-accent-soft/70 p-2 rounded-lg">
+                  {modalInfo}
+                </div>
+              )}
+            </div>
+
+            {/* Lista e filtro de palavras cadastradas */}
+            <div className="pt-3 flex flex-col flex-1 min-h-0 border-t border-border">
+              <div className="flex items-center justify-between pb-2 gap-2">
+                <span className="text-xs font-semibold text-muted uppercase tracking-wider">
+                  Palavras cadastradas ({palavrasFiltradas.length})
+                </span>
+                {total > 5 && (
+                  <div className="relative w-48 sm:w-60">
+                    <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+                    <input
+                      className="input !py-1 !pl-7 !pr-6 !text-xs"
+                      placeholder="Filtrar palavras..."
+                      value={modalBusca}
+                      onChange={(e) => setModalBusca(e.target.value)}
+                    />
+                    {modalBusca && (
+                      <button
+                        type="button"
+                        onClick={() => setModalBusca("")}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-brand"
+                        aria-label="Limpar filtro"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1 overflow-y-auto pr-1 py-2 max-h-[300px]">
+                {total === 0 ? (
+                  <div className="py-8 text-center text-sm text-muted">
+                    Nenhuma palavra-chave cadastrada ainda. Use o campo acima para adicionar.
+                  </div>
+                ) : palavrasFiltradas.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-muted">
+                    Nenhuma palavra encontrada para &quot;{modalBusca}&quot;.
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {palavrasFiltradas.map((k) => (
+                      <span
+                        key={k}
+                        className="badge bg-accent-soft text-brand !text-xs !py-1.5 !px-3 font-medium flex items-center gap-2 border border-border/80"
+                      >
+                        <span className="max-w-[320px] truncate" title={k}>{k}</span>
+                        <button
+                          type="button"
+                          aria-label={`Excluir ${k}`}
+                          title={`Excluir "${k}"`}
+                          onClick={() => removerTermo(k)}
+                          className="text-muted hover:text-danger hover:bg-danger/10 p-0.5 rounded transition"
+                        >
+                          <X size={13} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Rodapé */}
+            <div className="mt-4 pt-3 border-t border-border flex items-center justify-between text-xs text-muted">
+              <span>Além das palavras, CNPJ e Razão Social são vigiados.</span>
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                className="btn btn-ghost text-xs"
+              >
+                Concluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

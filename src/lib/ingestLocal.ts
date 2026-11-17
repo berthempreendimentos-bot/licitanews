@@ -61,8 +61,13 @@ export function ingestLocal(pregao: Pregao, msgs: Omit<ChatMessage, "evento">[],
 /** Busca retroativa: aplica um termo novo às mensagens já capturadas. */
 export function retroSearch(term: string) {
   const alerts: Alert[] = [];
+  const digits = term.replace(/\D/g, "");
+  const searchTerms = digits.length === 14
+    ? [term, digits, digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")]
+    : [term];
+
   for (const m of db.get("chat_messages")) {
-    if (!findMention(m.texto, [term])) continue;
+    if (!findMention(m.texto, searchTerms)) continue;
     alerts.push({
       id: `alert:${m.id}:${term.toLowerCase()}`,
       tipo: "Menção",
