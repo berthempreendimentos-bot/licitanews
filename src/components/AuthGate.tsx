@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -9,14 +9,24 @@ import { assinarTempoReal, db, descartarDadosLocais } from "@/lib/store";
 /** Sem Supabase: modo demonstração liberado (só em desenvolvimento). Com Supabase: exige login por e-mail e senha. */
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(supabase ? undefined : null);
+  const previousUid = useRef<string | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      previousUid.current = data.session?.user.id ?? null;
+    });
     const { data: sub } = supabase.auth.onAuthStateChange((evento, s) => {
       setSession(s);
-      // Renovação de token não troca de usuário: não precisa recarregar os dados.
-      if (evento !== "TOKEN_REFRESHED") db.reset();
+      const newUid = s?.user.id ?? null;
+      // Só recarrega o banco se trocou de usuário ou fez logout
+      if (evento !== "TOKEN_REFRESHED" && evento !== "INITIAL_SESSION" && previousUid.current !== newUid) {
+        previousUid.current = newUid;
+        db.reset();
+      } else if (!previousUid.current && newUid) {
+        previousUid.current = newUid;
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);

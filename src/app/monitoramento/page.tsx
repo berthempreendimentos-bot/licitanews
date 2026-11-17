@@ -411,7 +411,7 @@ function paraExibir(m: ChatMessage): ChatMessage & { geral: boolean } {
   };
 }
 
-function ChatPainel({ pregao, msgs: salvas }: { pregao: Pregao; msgs: ChatMessage[] }) {
+function ChatPainel({ pregao, msgs: salvas, carregando }: { pregao: Pregao; msgs: ChatMessage[]; carregando?: boolean }) {
   const [itens, setItens] = useState<Set<string>>(new Set());
   const msgs = salvas.map(paraExibir);
   const ordenadas = [...msgs].sort((a, b) => quando(b).localeCompare(quando(a)));
@@ -427,7 +427,9 @@ function ChatPainel({ pregao, msgs: salvas }: { pregao: Pregao; msgs: ChatMessag
       <div className="mb-3 border-b border-border pb-3">
         <div className="flex items-center gap-2">
           <div className="font-bold text-brand flex-1">{tituloPregao(pregao)}</div>
-          <span className="text-xs text-muted">{visiveis.length} de {msgs.length} mensagens</span>
+          <span className="text-xs text-muted">
+            {carregando ? "Carregando mensagens…" : `${visiveis.length} de ${msgs.length} mensagens`}
+          </span>
         </div>
         {orgaoPregao(pregao) && <div className="mt-0.5 text-xs text-muted">{orgaoPregao(pregao)}</div>}
       </div>
@@ -448,7 +450,14 @@ function ChatPainel({ pregao, msgs: salvas }: { pregao: Pregao; msgs: ChatMessag
         </div>
       )}
 
-      {msgs.length === 0 && <div className="text-sm text-muted">Nenhuma mensagem capturada ainda.</div>}
+      {carregando && msgs.length === 0 && (
+        <div className="py-12 text-center text-sm text-muted animate-pulse">
+          Carregando mensagens do pregão…
+        </div>
+      )}
+      {!carregando && msgs.length === 0 && (
+        <div className="text-sm text-muted">Nenhuma mensagem capturada ainda.</div>
+      )}
       <ul className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
         {visiveis.map((m) => (
           <li key={m.id} className={`rounded-xl border-l-4 p-3 text-sm shadow-sm ${m.remetente === "Pregoeiro" ? "bg-accent-soft" : "bg-bg"} ${corEvento(m.evento)?.borda ?? (m.remetente === "Pregoeiro" ? "border-l-brand" : "border-l-transparent")}`}>
@@ -551,6 +560,48 @@ export default function Monitoramento() {
   });
   const current = filtrados.find((p) => p.id === selected) ?? filtrados[0] ?? null;
   const currentMsgs = current ? msgs.filter((m) => m.codigo_compra === current.codigo_compra) : [];
+  const [carregandoChat, setCarregandoChat] = useState(false);
+
+  // Busca na hora as mensagens do pregão selecionado se a coleção completa ainda estiver carregando
+  useEffect(() => {
+    if (!current || !supabase) return;
+    const jaTem = msgs.some((m) => m.codigo_compra === current.codigo_compra);
+    if (jaTem || (current.mensagens || 0) === 0) return;
+
+    let cancelado = false;
+    setCarregandoChat(true);
+
+    async function buscarDireto() {
+      try {
+        const { data: sess } = await supabase!.auth.getSession();
+        const uid = sess.session?.user.id;
+        if (!uid || cancelado) {
+          if (!cancelado) setCarregandoChat(false);
+          return;
+        }
+
+        const { data, error } = await supabase!
+          .from("records")
+          .select("data")
+          .eq("collection", "chat_messages")
+          .eq("user_id", uid)
+          .eq("data->>codigo_compra", current!.codigo_compra)
+          .order("created_at", { ascending: false });
+
+        if (!cancelado) setCarregandoChat(false);
+        if (error || !data || data.length === 0) return;
+        const diretas = data.map((r) => r.data as ChatMessage);
+        db.upsertMany("chat_messages", diretas);
+      } catch {
+        if (!cancelado) setCarregandoChat(false);
+      }
+    }
+
+    void buscarDireto();
+
+    return () => { cancelado = true; };
+  }, [current?.codigo_compra, msgs.length]);
+
   // Contagem direto das mensagens salvas (o contador do pregão zera se ele for removido e cadastrado de novo).
   const porCompra = new Map<string, { n: number; ultima: string | null }>();
   for (const m of msgs) {
@@ -627,7 +678,8 @@ export default function Monitoramento() {
           )}
           {filtrados.map((p) => (
             <PregaoCard key={p.id} p={p} selected={current?.id === p.id} alertas={alertasNovos(p.codigo_compra)}
-              mensagens={porCompra.get(p.codigo_compra)?.n ?? 0} ultima={maisRecente(porCompra.get(p.codigo_compra)?.ultima ?? null, p.ultima_captura)}
+              mensagens={Math.max(porCompra.get(p.codigo_compra)?.n ?? 0, p.mensagens ?? 0)}
+              ultima={maisRecente(porCompra.get(p.codigo_compra)?.ultima ?? null, p.ultima_captura)}
               onSelect={() => setSelected(p.id)} onAbrir={() => void abrir(p.codigo_compra, true)} />
           ))}
         </div>
@@ -635,7 +687,7 @@ export default function Monitoramento() {
           {!current ? (
             <div className="text-sm text-muted">Selecione um pregão para ver as mensagens.</div>
           ) : (
-            <ChatPainel key={current.id} pregao={current} msgs={currentMsgs} />
+            <ChatPainel key={current.id} pregao={current} msgs={currentMsgs} carregando={carregandoChat} />
           )}
         </div>
       </div>

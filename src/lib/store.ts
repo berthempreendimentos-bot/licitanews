@@ -63,12 +63,17 @@ async function load(name: CollectionName) {
       .order("created_at", { ascending: false })
       .order("id", { ascending: true })
       .range(de, de + PAGINA - 1);
-    if (error) { console.error("[store] load", name, error.message); break; }
+    if (error) {
+      console.error("[store] load", name, error.message);
+      if (todos.length === 0) loaded.delete(name);
+      break;
+    }
     todos.push(...(data ?? []).map((r) => r.data as Rec));
+    // Atualiza o cache progressivamente para a interface mostrar dados na hora
+    cache.set(name, [...todos]);
+    emit(name);
     if (!data || data.length < PAGINA) break;
   }
-  cache.set(name, todos);
-  emit(name);
 }
 
 async function persistUpsert(name: CollectionName, recs: Rec[]) {
@@ -176,7 +181,7 @@ export const db = {
   /** Recarrega tudo (após login/logout). */
   reset() {
     loaded.clear();
-    cache.clear();
+    // Não limpa o cache bruscamente para a tela não piscar vazia enquanto recarrega
     listeners.forEach((_, name) => {
       void load(name);
     });
