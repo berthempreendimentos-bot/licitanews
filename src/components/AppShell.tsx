@@ -15,6 +15,7 @@ import { CicloAdminAuto } from "./CicloAdminAuto";
 import { BotaoSair } from "./BotaoSair";
 import { IAStatus } from "./IAStatus";
 import { useCollection, useEmpresa } from "@/lib/store";
+import { alertaCorrespondeConfig, alertasDaEmpresa } from "@/lib/monitor";
 import { useAdmin } from "@/lib/useAdmin";
 
 /** admin: só aparece para administradores. */
@@ -57,7 +58,9 @@ function Logo({ collapsed }: { collapsed?: boolean }) {
 function Sidebar({ onNavigate, collapsed }: { onNavigate?: () => void; collapsed?: boolean }) {
   const pathname = usePathname();
   const { items: alerts } = useCollection("alerts");
-  const unread = alerts.filter((a) => !a.lido).length;
+  const { empresa } = useEmpresa();
+  const cfg = alertasDaEmpresa(empresa);
+  const unread = alerts.filter((a) => !a.lido && alertaCorrespondeConfig(a.tipo, cfg.eventos)).length;
   const admin = useAdmin();
   return (
     <div className="flex h-full flex-col bg-brand py-5">

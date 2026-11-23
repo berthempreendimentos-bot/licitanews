@@ -1,27 +1,43 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCheck, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { BellRing, CheckCheck, Trash2 } from "lucide-react";
 import { Empty, PageHeader } from "@/components/ui";
 import { corEvento, EventoTag } from "@/components/EventoTag";
-import { db, useCollection } from "@/lib/store";
+import { db, useCollection, useEmpresa } from "@/lib/store";
+import { alertaCorrespondeConfig, alertasDaEmpresa } from "@/lib/monitor";
 import { dataBR } from "@/lib/format";
 
 const PRIO: Record<string, string> = { Alta: "bg-danger/12 text-danger", Média: "bg-warn/15 text-warn", Baixa: "bg-neutral-200 text-neutral-600" };
 
 export default function Alertas() {
   const { items } = useCollection("alerts");
+  const { empresa } = useEmpresa();
+  const cfg = alertasDaEmpresa(empresa);
   const [filtro, setFiltro] = useState<"todos" | "nao_lidos">("nao_lidos");
-  const list = filtro === "todos" ? items : items.filter((a) => !a.lido);
-  const unread = items.filter((a) => !a.lido);
+
+  // Filtra apenas os alertas que correspondem ao que o usuário escolheu em Alarme
+  const alertasConfigurados = items.filter((a) => alertaCorrespondeConfig(a.tipo, cfg.eventos));
+  const list = filtro === "todos" ? alertasConfigurados : alertasConfigurados.filter((a) => !a.lido);
+  const unread = alertasConfigurados.filter((a) => !a.lido);
+
+  const descricaoFiltro = cfg.eventos.length === 0
+    ? "Nenhum alarme ativado"
+    : cfg.eventos.length === 1 && cfg.eventos[0] === "Menção"
+      ? "Mostrando apenas alertas de palavras-chave / menção"
+      : `Mostrando alarmes ativos: ${cfg.eventos.join(", ")}`;
 
   return (
     <>
       <PageHeader
         title="Alertas"
-        subtitle={`${unread.length} não lidos · ${items.length} no total`}
+        subtitle={`${unread.length} não lidos · ${alertasConfigurados.length} no total — ${descricaoFiltro}`}
         actions={
           <>
+            <Link href="/monitoramento/alarme" className="btn btn-ghost">
+              <BellRing size={14} /> Configurar alarmes
+            </Link>
             <button className="btn btn-ghost" onClick={() => setFiltro(filtro === "todos" ? "nao_lidos" : "todos")}>
               {filtro === "todos" ? "Só não lidos" : "Ver todos"}
             </button>
@@ -31,8 +47,39 @@ export default function Alertas() {
           </>
         }
       />
-      {list.length === 0 ? (
-        <Empty title="Nada por aqui" text="Os alertas chegam do Monitoramento (menções ao seu CNPJ e palavras-chave, prazos e convocações)." />
+
+      {cfg.eventos.length === 0 ? (
+        <Empty
+          title="Nenhum evento ativo para alarmes"
+          text="Você desmarcou todos os tipos de avisos na página de Alarme. Acesse a configuração para ativar as palavras-chave ou outros eventos que deseja monitorar."
+          action={
+            <Link href="/monitoramento/alarme" className="btn btn-primary">
+              <BellRing size={14} /> Configurar alarmes
+            </Link>
+          }
+        />
+      ) : list.length === 0 ? (
+        <Empty
+          title={alertasConfigurados.length > 0 ? "Tudo em dia!" : "Nada por aqui"}
+          text={
+            alertasConfigurados.length > 0
+              ? `Todos os ${alertasConfigurados.length} alerta(s) dos eventos selecionados já foram marcados como lidos.`
+              : cfg.eventos.includes("Menção") && cfg.eventos.length === 1
+                ? "Nenhum alerta de palavra-chave encontrado ainda. Os alertas surgirão quando uma de suas palavras-chave ou CNPJ for mencionado no chat."
+                : "Nenhum alerta encontrado para os eventos selecionados no momento."
+          }
+          action={
+            alertasConfigurados.length > 0 ? (
+              <button className="btn btn-ghost" onClick={() => setFiltro("todos")}>
+                Ver todos os alertas
+              </button>
+            ) : (
+              <Link href="/monitoramento/alarme" className="btn btn-ghost">
+                <BellRing size={14} /> Ajustar eventos do alarme
+              </Link>
+            )
+          }
+        />
       ) : (
         <div className="space-y-2">
           {list.map((a) => (

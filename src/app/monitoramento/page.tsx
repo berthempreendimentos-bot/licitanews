@@ -6,7 +6,7 @@ import { Plus, Trash2, X, Square, Play, ExternalLink, Building2, MapPin, BellRin
 import { Empty, PageHeader, StatCard } from "@/components/ui";
 import { corEvento, EventoTag } from "@/components/EventoTag";
 import { db, newId, useCollection, useEmpresa } from "@/lib/store";
-import { codigoCompraFromLink, comprasnetUrl, itemDoTexto, orgaoPregao, parseCodigoCompra, pncpFromLink, rotuloRemetente, tituloPregao } from "@/lib/monitor";
+import { alertaCorrespondeConfig, alertasDaEmpresa, codigoCompraFromLink, comprasnetUrl, itemDoTexto, orgaoPregao, parseCodigoCompra, pncpFromLink, rotuloRemetente, tituloPregao } from "@/lib/monitor";
 import { abrirNoComprasnet } from "@/lib/extensao";
 import { supabase } from "@/lib/supabase";
 import { retroSearch } from "@/lib/ingestLocal";
@@ -495,6 +495,9 @@ export default function Monitoramento() {
   const { items: pregoes } = useCollection("pregoes");
   const { items: msgs } = useCollection("chat_messages");
   const { items: alerts } = useCollection("alerts");
+  const { empresa } = useEmpresa();
+  const cfg = alertasDaEmpresa(empresa);
+  const alertsConfigurados = alerts.filter((a) => alertaCorrespondeConfig(a.tipo, cfg.eventos));
   const [admin, setAdmin] = useState(false);
   useEffect(() => {
     supabase?.auth.getUser().then(({ data }) => setAdmin(data.user?.app_metadata?.role === "admin"));
@@ -545,7 +548,7 @@ export default function Monitoramento() {
     else setInfo(`Compra ${codigo} adicionada. O robô do PEPPACORP vai capturar as mensagens e elas aparecem aqui sozinhas.`);
   }
 
-  const alertasNovos = (codigo: string) => alerts.filter((a) => !a.lido && a.ref === codigo).length;
+  const alertasNovos = (codigo: string) => alertsConfigurados.filter((a) => !a.lido && a.ref === codigo).length;
   const contagem: Record<Filtro, number> = {
     todos: pregoes.length,
     ativos: pregoes.filter((p) => p.status !== "Encerrado").length,
@@ -632,7 +635,7 @@ export default function Monitoramento() {
         <StatCard label="Pregões monitorados" value={pregoes.length} />
         <StatCard label="Capturando agora" value={pregoes.filter((p) => p.status === "Capturando").length} />
         <StatCard label="Mensagens capturadas" value={msgs.length} />
-        <StatCard label="Alertas não lidos" value={alerts.filter((a) => !a.lido).length} accent />
+        <StatCard label="Alertas não lidos" value={alertsConfigurados.filter((a) => !a.lido).length} accent />
       </div>
 
       <Keywords />

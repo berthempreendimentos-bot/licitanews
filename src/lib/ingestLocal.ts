@@ -1,7 +1,7 @@
 "use client";
 
 import { db } from "./store";
-import { alertasDaEmpresa, classifyMessage, disparosPara, enriquecer, findMention, recente, watchTerms } from "./monitor";
+import { alertaCorrespondeConfig, alertasDaEmpresa, classifyMessage, disparosPara, enriquecer, findMention, recente, watchTerms } from "./monitor";
 import { nowIso } from "./format";
 import type { Alert, ChatMessage, Disparo, Empresa, Pregao } from "./types";
 
@@ -32,16 +32,19 @@ export function ingestLocal(pregao: Pregao, msgs: Omit<ChatMessage, "evento">[],
     const d = recente(m.data_hora) ? disparosPara(cfg, m, termo, ev?.evento ?? null) : null;
     if (d) disparos.push(d);
     if (termo || ev) {
-      alerts.push({
-        id: `alert:${m.id}`,
-        tipo: termo ? "Menção" : ev!.evento,
-        titulo: termo ? `🚨 Menção a "${termo}" no pregão ${pregao.codigo_compra}` : `${ev!.evento} — pregão ${pregao.codigo_compra}`,
-        mensagem: m.texto.slice(0, 300),
-        prioridade: termo ? "Alta" : ev!.prioridade,
-        lido: false,
-        ref: pregao.codigo_compra,
-        created_at: nowIso(),
-      });
+      const tipoAlerta = termo ? "Menção" : ev!.evento;
+      if (alertaCorrespondeConfig(tipoAlerta, cfg.eventos)) {
+        alerts.push({
+          id: `alert:${m.id}`,
+          tipo: tipoAlerta,
+          titulo: termo ? `🚨 Menção a "${termo}" no pregão ${pregao.codigo_compra}` : `${ev!.evento} — pregão ${pregao.codigo_compra}`,
+          mensagem: m.texto.slice(0, 300),
+          prioridade: termo ? "Alta" : ev!.prioridade,
+          lido: false,
+          ref: pregao.codigo_compra,
+          created_at: nowIso(),
+        });
+      }
     }
   }
   db.upsertMany("chat_messages", chats);

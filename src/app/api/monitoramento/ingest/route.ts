@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
 import { ehAdmin } from "@/lib/adminServidor";
-import { alertasDaEmpresa, classifyMessage, disparosPara, enriquecer, findMention, normalizeRawMessage, recente, watchTerms } from "@/lib/monitor";
+import { alertaCorrespondeConfig, alertasDaEmpresa, classifyMessage, disparosPara, enriquecer, findMention, normalizeRawMessage, recente, watchTerms } from "@/lib/monitor";
 import type { Alert, AlertasChat, ChatMessage, Disparo, Empresa, Pregao } from "@/lib/types";
 
 type Linha = { user_id: string; collection: string; id: string; data: unknown };
@@ -129,17 +129,20 @@ async function processar(
     const disparo = recente(m.data_hora) ? disparosPara(cfg, m, termo, ev?.evento ?? null) : null;
     if (disparo) disparos.push(disparo);
     if (termo || ev) {
-      const alert: Alert = {
-        id: `alert:${full.id}`,
-        tipo: termo ? "Menção" : ev!.evento,
-        titulo: termo ? `🚨 Menção a "${termo}" no pregão ${codigo}` : `${ev!.evento} — pregão ${codigo}`,
-        mensagem: m.texto.slice(0, 300),
-        prioridade: termo ? "Alta" : ev!.prioridade,
-        lido: false,
-        ref: codigo,
-        created_at: now,
-      };
-      rows.push({ user_id: userId, collection: "alerts", id: alert.id, data: alert });
+      const tipoAlerta = termo ? "Menção" : ev!.evento;
+      if (alertaCorrespondeConfig(tipoAlerta, cfg.eventos)) {
+        const alert: Alert = {
+          id: `alert:${full.id}`,
+          tipo: tipoAlerta,
+          titulo: termo ? `🚨 Menção a "${termo}" no pregão ${codigo}` : `${ev!.evento} — pregão ${codigo}`,
+          mensagem: m.texto.slice(0, 300),
+          prioridade: termo ? "Alta" : ev!.prioridade,
+          lido: false,
+          ref: codigo,
+          created_at: now,
+        };
+        rows.push({ user_id: userId, collection: "alerts", id: alert.id, data: alert });
+      }
     }
   }
   // Mensagens lidas do portal (mesmo sem novidade) atualizam a última captura.

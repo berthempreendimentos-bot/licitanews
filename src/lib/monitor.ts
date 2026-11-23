@@ -79,6 +79,17 @@ export function alertasDaEmpresa(empresa: { alertas_chat?: AlertasChat }): Alert
   return { ...ALERTAS_PADRAO, ...(empresa.alertas_chat ?? {}) };
 }
 
+/** Verifica se um tipo de alerta corresponde aos eventos selecionados pelo usuário na configuração de alarme. */
+export function alertaCorrespondeConfig(tipo: string, eventos: string[]): boolean {
+  if (!eventos || !eventos.length) return false;
+  const set = new Set(eventos);
+  if (tipo === "Menção") return set.has("Menção");
+  if (tipo === "Pregoeiro" || tipo === "Mensagem do pregoeiro") {
+    return set.has("Mensagem do pregoeiro") || set.has("Pregoeiro");
+  }
+  return set.has(tipo);
+}
+
 /**
  * A mensagem é recente o bastante para tocar alarme? (o histórico importado na primeira captura não toca).
  * O portal manda "2026-10-16 11:07:01.800" no horário de Brasília, sem fuso.
