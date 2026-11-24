@@ -147,8 +147,8 @@ export function ConfigIACard() {
               <input className="input mt-1 font-mono text-xs" value={form.gemini_modelo} onChange={(e) => setForm({ ...form, gemini_modelo: e.target.value })} />
             )}
             <span className="mt-1 block font-normal">
-              Recomendado: <b className="font-mono">{GEMINI_MODELO_PADRAO}</b> (o Google mantém sempre na versão mais nova).
-              “Testar chave” lista os modelos da sua conta. Modelos “Flash” são mais rápidos e baratos; “Pro” analisam com mais cuidado.
+              Recomendado: <b className="font-mono">{GEMINI_MODELO_PADRAO}</b> (o mais rápido, estável e gratuito).
+              Modelos “Flash” funcionam com cota diária gratuita do Google; modelos “Pro” exigem conta paga com faturamento ativado no AI Studio.
             </span>
           </label>
 

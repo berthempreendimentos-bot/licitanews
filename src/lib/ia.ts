@@ -1,10 +1,10 @@
 import type { ConfigIA, Empresa } from "./types";
 
-/** Modelo usado se nenhum for escolhido. "Testar chave" em Configurações lista os modelos disponíveis na conta. */
-export const GEMINI_MODELO_PADRAO = "gemini-flash-latest";
+/** Modelo usado se nenhum for escolhido. Rápido, estável e gratuito na chave do Gemini. */
+export const GEMINI_MODELO_PADRAO = "gemini-2.5-flash";
 
-/** Modelos que o Google aposentou (ainda aparecem na lista da conta, mas respondem "não disponível"). */
-export const modeloAposentado = (m: string) => /^gemini-(1\.|2\.0-|2\.5-)/.test(m);
+/** Modelos que o Google aposentou ou modelos especiais que não funcionam no plano gratuito. */
+export const modeloAposentado = (m: string) => /^gemini-(1\.|2\.0-|2\.5-pro)/.test(m) || /customtools/i.test(m);
 
 export function iaDaEmpresa(empresa: Pick<Empresa, "ia">): ConfigIA {
   const ia: ConfigIA = { provedor: "claude", gemini_key: "", gemini_modelo: GEMINI_MODELO_PADRAO, ...(empresa.ia ?? {}) };
