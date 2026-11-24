@@ -16,13 +16,13 @@ export async function GET(req: Request) {
 
   const key = req.headers.get("x-ingest-key") || "";
   if (key.length < 16) return NextResponse.json({ error: "chave inválida" }, { status: 401 });
-  const { data: emp } = await sb
+  const { data: emps, error: empErr } = await sb
     .from("records")
     .select("user_id, data")
     .eq("collection", "empresa")
-    .eq("data->>ingest_key", key)
-    .maybeSingle();
-  if (!emp) return NextResponse.json({ error: "chave inválida" }, { status: 401 });
+    .eq("data->>ingest_key", key);
+  if (empErr || !emps || emps.length === 0) return NextResponse.json({ error: "chave inválida" }, { status: 401 });
+  const emp = emps[0];
   const userId = emp.user_id as string;
   const alertas = alertasDaEmpresa(emp.data as Empresa);
 

@@ -59,9 +59,9 @@ export default function Configuracoes() {
 
         <div className="space-y-5 lg:row-span-2">
           <div className="card p-5">
-            <h2 className="font-bold text-brand">Token do robô</h2>
+            <h2 className="font-bold text-brand">Token do Monitor</h2>
             <p className="text-xs text-muted mt-1">
-              Usado pela extensão para enviar o chat dos pregões e pela API de dados (<code>/api/v1</code>, header <code>x-api-key</code>)
+              Usado pela extensão PEPPACORP Monitor para enviar o chat dos pregões e pela API de dados (<code>/api/v1</code>, header <code>x-api-key</code>)
               para ler suas compras monitoradas, mensagens e alertas. Não dá login na sua conta, mas trate como senha:
               se vazar, gere outro (a extensão precisa ser conectada de novo).
             </p>

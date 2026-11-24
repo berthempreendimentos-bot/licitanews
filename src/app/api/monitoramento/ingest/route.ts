@@ -32,13 +32,21 @@ export async function POST(req: Request) {
   if (!/^\d{10,}$/.test(codigo)) return NextResponse.json({ error: "codigo_compra inválido" }, { status: 400 });
   const raw = Array.isArray(body?.messages) ? body!.messages.slice(0, 50) : [];
 
-  const { data: emp } = await sb
+  const { data: emps, error: empErr } = await sb
     .from("records")
     .select("user_id, data")
     .eq("collection", "empresa")
-    .eq("data->>ingest_key", key)
-    .maybeSingle();
-  if (!emp) return NextResponse.json({ error: "chave inválida" }, { status: 401 });
+    .eq("data->>ingest_key", key);
+  if (empErr || !emps || emps.length === 0) return NextResponse.json({ error: "chave inválida" }, { status: 401 });
+
+  // Se houver mais de uma conta com a mesma chave (ex.: mesma empresa), prioriza quem é admin
+  let emp = emps[0];
+  for (const item of emps) {
+    if (await ehAdmin(sb, item.user_id as string)) {
+      emp = item;
+      break;
+    }
+  }
   const userId = emp.user_id as string;
   const empresa = emp.data as Empresa;
 

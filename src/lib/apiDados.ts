@@ -33,13 +33,19 @@ export async function acessoDaRequisicao(req: Request): Promise<Acesso | Respons
   if (!sb) return resposta({ error: "Supabase não configurado no servidor" }, 503);
   const key = req.headers.get("x-api-key") || req.headers.get("x-ingest-key") || "";
   if (key.length < 16) return resposta({ error: "envie a chave da empresa no header x-api-key" }, 401);
-  const { data: emp } = await sb
+  const { data: emps, error: empErr } = await sb
     .from("records")
     .select("user_id, data")
     .eq("collection", "empresa")
-    .eq("data->>ingest_key", key)
-    .maybeSingle();
-  if (!emp) return resposta({ error: "chave inválida" }, 401);
+    .eq("data->>ingest_key", key);
+  if (empErr || !emps || emps.length === 0) return resposta({ error: "chave inválida" }, 401);
+  let emp = emps[0];
+  for (const item of emps) {
+    if (await ehAdmin(sb, item.user_id as string)) {
+      emp = item;
+      break;
+    }
+  }
   const userId = emp.user_id as string;
   return { sb, userId, empresa: emp.data as Empresa, admin: await ehAdmin(sb, userId) };
 }
