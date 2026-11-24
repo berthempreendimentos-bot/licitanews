@@ -337,9 +337,11 @@ function PregaoCard({ p, selected, onSelect, onAbrir, alertas, mensagens, ultima
         <span className="truncate" title={p.orgao}>{p.orgao || (valido ? "Buscando dados do órgão…" : "Órgão não identificado")}</span>
       </div>
       {local && (
-        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
-          <MapPin size={12} className="shrink-0" />
-          <span className="truncate">{local}</span>
+        <div className="mt-1 flex items-center gap-1 text-xs">
+          <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded text-[11px] border border-blue-200/70">
+            <MapPin size={11} className="shrink-0 text-blue-600" />
+            <span className="truncate">{local}</span>
+          </span>
         </div>
       )}
 

@@ -6,68 +6,94 @@
   if (window.__PEPPA_BRIDGE__) return;
   window.__PEPPA_BRIDGE__ = true;
 
-  var VERSION = chrome.runtime.getManifest().version;
+  function isContextValid() {
+    try {
+      return typeof chrome !== 'undefined' && !!chrome.runtime && !!chrome.runtime.id;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  var VERSION = isContextValid() ? chrome.runtime.getManifest().version : '1.2.0';
   var pending = {};
   var seq = 0;
 
   // Anuncia a presença da extensão por mensagem (não mexe no HTML: o React
   // acusaria diferença entre o HTML do servidor e o da página).
   function announce() {
-    chrome.storage.local.get(['peppa_server', 'peppa_key'], function (cfg) {
-      window.postMessage({
-        type: 'PEPPA_EXT_HELLO', version: VERSION,
-        server: cfg.peppa_server || null, keyTail: cfg.peppa_key ? String(cfg.peppa_key).slice(-6) : null,
-      }, window.location.origin);
-    });
+    if (!isContextValid()) return;
+    try {
+      chrome.storage.local.get(['peppa_server', 'peppa_key'], function (cfg) {
+        if (!isContextValid() || (chrome.runtime && chrome.runtime.lastError)) return;
+        window.postMessage({
+          type: 'PEPPA_EXT_HELLO', version: VERSION,
+          server: (cfg && cfg.peppa_server) || null,
+          keyTail: (cfg && cfg.peppa_key) ? String(cfg.peppa_key).slice(-6) : null,
+        }, window.location.origin);
+      });
+    } catch (e) {}
   }
   announce();
-  chrome.storage.onChanged.addListener(function (changes, area) {
-    if (area === 'local' && (changes.peppa_server || changes.peppa_key)) announce();
-  });
+
+  try {
+    if (isContextValid() && chrome.storage && chrome.storage.onChanged) {
+      chrome.storage.onChanged.addListener(function (changes, area) {
+        if (!isContextValid()) return;
+        if (area === 'local' && (changes.peppa_server || changes.peppa_key)) announce();
+      });
+    }
+  } catch (e) {}
 
   window.addEventListener('message', function (ev) {
     if (ev.source !== window || !ev.data) return;
+    if (!isContextValid()) return;
     var d = ev.data;
-    if (d.type === 'PEPPA_EXT_PING') { announce(); return; }
-    if (d.type === 'PEPPA_EXT_CONNECT') {
-      // Confirmação da pessoa: um site qualquer não pode redirecionar o chat dos pregões para ele.
-      if (!window.confirm('Conectar a extensão PEPPACORP Monitor a ' + window.location.origin + '?\n\nO chat dos pregões monitorados passará a ser enviado para este endereço.')) {
-        window.postMessage({ type: 'PEPPA_EXT_CONNECT_RESULT', ok: false, error: 'Conexão cancelada.' }, window.location.origin);
+    try {
+      if (d.type === 'PEPPA_EXT_PING') { announce(); return; }
+      if (d.type === 'PEPPA_EXT_CONNECT') {
+        // Confirmação da pessoa: um site qualquer não pode redirecionar o chat dos pregões para ele.
+        if (!window.confirm('Conectar a extensão PEPPACORP Monitor a ' + window.location.origin + '?\n\nO chat dos pregões monitorados passará a ser enviado para este endereço.')) {
+          window.postMessage({ type: 'PEPPA_EXT_CONNECT_RESULT', ok: false, error: 'Conexão cancelada.' }, window.location.origin);
+          return;
+        }
+        chrome.runtime.sendMessage({ action: 'peppa_save_config', server: window.location.origin, key: d.key }, function (resp) {
+          if (!isContextValid() || (chrome.runtime && chrome.runtime.lastError)) return;
+          window.postMessage({ type: 'PEPPA_EXT_CONNECT_RESULT', ok: !!(resp && resp.ok), error: resp && resp.error }, window.location.origin);
+        });
         return;
       }
-      chrome.runtime.sendMessage({ action: 'peppa_save_config', server: window.location.origin, key: d.key }, function (resp) {
-        window.postMessage({ type: 'PEPPA_EXT_CONNECT_RESULT', ok: !!(resp && resp.ok), error: resp && resp.error }, window.location.origin);
-      });
-      return;
-    }
-    if (d.type === 'PEPPA_EXT_OPEN') {
-      chrome.runtime.sendMessage({ action: 'peppa_open', url: d.url, show: !!d.show, janela: d.janela }, function (resp) {
-        window.postMessage({ type: 'PEPPA_EXT_OPEN_RESULT', reqId: d.reqId, ok: !!(resp && resp.ok), already_open: !!(resp && resp.already_open), shown: !!(resp && resp.shown) }, window.location.origin);
-      });
-      return;
-    }
-    if (d.type === 'PEPPA_EXT_CAPTURE_RESET') {
-      chrome.runtime.sendMessage({ action: 'peppa_capture_reset', codigo_compra: d.codigo_compra });
-      return;
-    }
-    if (d.type === 'PEPPA_EXT_CLOSE') {
-      chrome.runtime.sendMessage({ action: 'peppa_close', codigo_compra: d.codigo_compra }, function (resp) {
-        window.postMessage({ type: 'PEPPA_EXT_CLOSE_RESULT', reqId: d.reqId, ok: !!(resp && resp.ok) }, window.location.origin);
-      });
-      return;
-    }
-    if (d.type === 'PEPPA_EXT_SILENCE') { chrome.runtime.sendMessage({ action: 'peppa_silence' }); return; }
-    if (d.type === 'PEPPA_EXT_TEST_ALARM') { chrome.runtime.sendMessage({ action: 'peppa_test_alarm', alertas: d.alertas }); return; }
-    if (d.type === 'PEPPA_EXT_ALARM_STATUS') {
-      chrome.runtime.sendMessage({ action: 'peppa_alarm_status' }, function (r) {
-        window.postMessage({ type: 'PEPPA_EXT_ALARM', on: !!(r && r.on) }, window.location.origin);
-      });
-      return;
-    }
-    if (d.type === 'PEPPA_EXT_INGEST_RESULT' && pending[d.reqId]) {
-      pending[d.reqId](d.result);
-      delete pending[d.reqId];
-    }
+      if (d.type === 'PEPPA_EXT_OPEN') {
+        chrome.runtime.sendMessage({ action: 'peppa_open', url: d.url, show: !!d.show, janela: d.janela }, function (resp) {
+          if (!isContextValid() || (chrome.runtime && chrome.runtime.lastError)) return;
+          window.postMessage({ type: 'PEPPA_EXT_OPEN_RESULT', reqId: d.reqId, ok: !!(resp && resp.ok), already_open: !!(resp && resp.already_open), shown: !!(resp && resp.shown) }, window.location.origin);
+        });
+        return;
+      }
+      if (d.type === 'PEPPA_EXT_CAPTURE_RESET') {
+        chrome.runtime.sendMessage({ action: 'peppa_capture_reset', codigo_compra: d.codigo_compra });
+        return;
+      }
+      if (d.type === 'PEPPA_EXT_CLOSE') {
+        chrome.runtime.sendMessage({ action: 'peppa_close', codigo_compra: d.codigo_compra }, function (resp) {
+          if (!isContextValid() || (chrome.runtime && chrome.runtime.lastError)) return;
+          window.postMessage({ type: 'PEPPA_EXT_CLOSE_RESULT', reqId: d.reqId, ok: !!(resp && resp.ok) }, window.location.origin);
+        });
+        return;
+      }
+      if (d.type === 'PEPPA_EXT_SILENCE') { chrome.runtime.sendMessage({ action: 'peppa_silence' }); return; }
+      if (d.type === 'PEPPA_EXT_TEST_ALARM') { chrome.runtime.sendMessage({ action: 'peppa_test_alarm', alertas: d.alertas }); return; }
+      if (d.type === 'PEPPA_EXT_ALARM_STATUS') {
+        chrome.runtime.sendMessage({ action: 'peppa_alarm_status' }, function (r) {
+          if (!isContextValid() || (chrome.runtime && chrome.runtime.lastError)) return;
+          window.postMessage({ type: 'PEPPA_EXT_ALARM', on: !!(r && r.on) }, window.location.origin);
+        });
+        return;
+      }
+      if (d.type === 'PEPPA_EXT_INGEST_RESULT' && pending[d.reqId]) {
+        pending[d.reqId](d.result);
+        delete pending[d.reqId];
+      }
+    } catch (e) {}
   });
 
   chrome.runtime.onMessage.addListener(function (req, sender, sendResponse) {

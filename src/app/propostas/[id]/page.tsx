@@ -21,8 +21,8 @@ function linkPncp(id: string) {
 }
 
 /** Resultado da pesquisa de um item: referência no PNCP, preço de mercado e marcas (clicáveis). */
-function PesquisaDoItem({ pq, aberto, onAbrir, onMarca }: {
-  pq: PesquisaItem; aberto: boolean; onAbrir: () => void; onMarca: (marca: string, modelo?: string) => void;
+function PesquisaDoItem({ pq, aberto, onAbrir, onMarca, marcaAtual }: {
+  pq: PesquisaItem; aberto: boolean; onAbrir: () => void; onMarca: (marca: string, modelo?: string) => void; marcaAtual?: string;
 }) {
   const r = pq.pncp;
   return (
@@ -39,14 +39,27 @@ function PesquisaDoItem({ pq, aberto, onAbrir, onMarca }: {
           {pq.mercado.observacao && <span className="text-muted"> — {pq.mercado.observacao}</span>}</div>
       )}
       {!!pq.marcas?.length && (
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1.5">
           <b>Marcas:</b>
-          {pq.marcas.map((m, k) => (
-            <button key={k} type="button" title={m.observacao || "Usar esta marca"} onClick={() => onMarca(m.marca, m.modelo)}
-              className="rounded-full border border-blue-200 bg-white px-2 py-0.5 font-semibold text-blue-800 hover:border-blue-600">
-              {m.marca}{m.modelo ? ` · ${m.modelo}` : ""}
-            </button>
-          ))}
+          {pq.marcas.map((m, k) => {
+            const selecionada = !!marcaAtual?.trim() && marcaAtual.trim().toLowerCase() === m.marca.trim().toLowerCase();
+            return (
+              <button
+                key={k}
+                type="button"
+                title={m.observacao ? `${m.observacao} (clique para escolher)` : "Usar esta marca"}
+                onClick={() => onMarca(m.marca, m.modelo)}
+                className={`rounded-full px-2.5 py-0.5 font-semibold transition cursor-pointer ${
+                  selecionada
+                    ? "bg-blue-600 text-white border border-blue-600 shadow-xs"
+                    : "border border-blue-200 bg-white text-blue-800 hover:border-blue-500 hover:bg-blue-50"
+                }`}
+              >
+                {selecionada && "✓ "}
+                {m.marca}{m.modelo ? ` · ${m.modelo}` : ""}
+              </button>
+            );
+          })}
         </div>
       )}
       <button type="button" className="font-semibold text-accent" onClick={onAbrir}>{aberto ? "ocultar fontes" : "ver fontes"}</button>
@@ -123,7 +136,33 @@ export default function EditorProposta() {
   const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null);
 
   // Carrega uma vez; depois a tela é a fonte da verdade e grava com atraso curto (autosave).
-  useEffect(() => { if (salva && !p) setP(salva); }, [salva, p]);
+  useEffect(() => {
+    if (salva && !p) {
+      // Se houver itens com pesquisa de marcas mas sem marca registrada, registra a 1ª marca automaticamente
+      const precisaPreencher = salva.itens.some((i) => !i.marca?.trim() && i.pesquisa?.marcas && i.pesquisa.marcas.length > 0);
+      if (precisaPreencher) {
+        const atualizada: Proposta = {
+          ...salva,
+          itens: salva.itens.map((i) => {
+            if (!i.marca?.trim() && i.pesquisa?.marcas && i.pesquisa.marcas.length > 0) {
+              const primeira = i.pesquisa.marcas[0];
+              return {
+                ...i,
+                marca: primeira.marca,
+                modelo: i.modelo?.trim() || primeira.modelo || "",
+              };
+            }
+            return i;
+          }),
+        };
+        setP(atualizada);
+        pendente.current = atualizada;
+        db.upsert("propostas", atualizada);
+      } else {
+        setP(salva);
+      }
+    }
+  }, [salva, p]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendente = useRef<Proposta | null>(null);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); if (pendente.current) db.upsert("propostas", pendente.current); }, []);
@@ -229,11 +268,41 @@ export default function EditorProposta() {
     if (!p) return;
     const marcados = visiveis.filter((i) => i.participar);
     if (!marcados.length) return setMsg({ ok: false, texto: "Nenhum item para pesquisar: marque os itens em que vai participar (ou limpe o filtro)." });
+
+    // Se solicitou marcas, já registra a 1ª marca nos itens que já tinham pesquisa mas estavam sem marca
+    let autoPreenchidos = 0;
+    if (tipo === "marcas") {
+      const semMarcaComPesquisa = marcados.filter((i) => !i.marca?.trim() && i.pesquisa?.marcas && i.pesquisa.marcas.length > 0);
+      if (semMarcaComPesquisa.length > 0) {
+        autoPreenchidos = semMarcaComPesquisa.length;
+        muda((cur) => ({
+          itens: cur.itens.map((i) => {
+            if (!i.marca?.trim() && i.pesquisa?.marcas && i.pesquisa.marcas.length > 0) {
+              const primeira = i.pesquisa.marcas[0];
+              return {
+                ...i,
+                marca: primeira.marca,
+                modelo: i.modelo?.trim() || primeira.modelo || "",
+              };
+            }
+            return i;
+          }),
+        }));
+      }
+    }
+
     // Itens já pesquisados neste modo são pulados: rodar de novo continua de onde parou.
     const jaFeito = (i: ItemProposta) => (tipo === "precos" ? !!i.pesquisa?.pncp : i.pesquisa?.marcas !== undefined);
     const alvo = marcados.filter((i) => !jaFeito(i));
     const pulados = marcados.length - alvo.length;
-    if (!alvo.length) return setMsg({ ok: true, texto: `Todos os ${marcados.length} itens já foram pesquisados (${tipo === "precos" ? "preços" : "marcas"}).` });
+    if (!alvo.length) {
+      return setMsg({
+        ok: true,
+        texto: autoPreenchidos > 0
+          ? `Marca registrada automaticamente em ${autoPreenchidos} itens da proposta (você pode trocar clicando nas outras marcas sugeridas).`
+          : `Todos os ${marcados.length} itens já foram pesquisados (${tipo === "precos" ? "preços" : "marcas"}).`,
+      });
+    }
     setMsg(null);
     setOcupado(tipo);
     parar.current = false;
@@ -244,7 +313,19 @@ export default function EditorProposta() {
         if (!r) return i;
         const pq = { ...i.pesquisa, ...r };
         // Referência pesquisada: prefere contratações públicas (PNCP); senão o preço de mercado.
-        return { ...i, pesquisa: pq, valorPesquisado: pq.pncp?.mediana ?? pq.mercado?.preco ?? i.valorPesquisado ?? null };
+        // Se a pesquisa trouxe marcas e o item ainda não tem marca, registra a primeira automaticamente
+        const primeiraMarca = (tipo === "marcas" && !i.marca?.trim() && pq.marcas && pq.marcas.length > 0)
+          ? pq.marcas[0]
+          : null;
+        return {
+          ...i,
+          pesquisa: pq,
+          valorPesquisado: pq.pncp?.mediana ?? pq.mercado?.preco ?? i.valorPesquisado ?? null,
+          ...(primeiraMarca ? {
+            marca: primeiraMarca.marca,
+            modelo: i.modelo?.trim() || primeiraMarca.modelo || "",
+          } : {}),
+        };
       }),
     }));
     let feitos = 0;
@@ -533,7 +614,7 @@ export default function EditorProposta() {
                           ) : null}
                           {i.pesquisa && (
                             <PesquisaDoItem pq={i.pesquisa} aberto={verFontes === i.numero} onAbrir={() => setVerFontes(verFontes === i.numero ? null : i.numero)}
-                              onMarca={(marca, modelo) => mudaItem(i.numero, { marca, ...(modelo ? { modelo } : {}) })} />
+                              onMarca={(marca, modelo) => mudaItem(i.numero, { marca, modelo: modelo || "" })} marcaAtual={i.marca} />
                           )}
                         </td>
                         <td className="py-3 pl-3 text-right whitespace-nowrap tabular-nums">{i.quantidade.toLocaleString("pt-BR")}<div className="text-[11px] text-muted">{i.unidade}</div></td>

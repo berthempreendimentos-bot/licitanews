@@ -565,14 +565,21 @@
     return false;
   });
 
+  function isContextValid() {
+    try { return typeof chrome !== 'undefined' && !!chrome.runtime && !!chrome.runtime.id; } catch (e) { return false; }
+  }
+
   function start() {
     if (!document.body) { setTimeout(start, 300); return; }
-    chrome.storage.local.get(['peppa_server', 'peppa_key'], boot);
-    chrome.storage.onChanged.addListener(function (changes, area) {
-      if (area !== 'local' || (!changes.peppa_server && !changes.peppa_key)) return;
-      registered = false;
+    if (!isContextValid()) return;
+    try {
       chrome.storage.local.get(['peppa_server', 'peppa_key'], boot);
-    });
+      chrome.storage.onChanged.addListener(function (changes, area) {
+        if (!isContextValid() || area !== 'local' || (!changes.peppa_server && !changes.peppa_key)) return;
+        registered = false;
+        try { chrome.storage.local.get(['peppa_server', 'peppa_key'], boot); } catch (e) {}
+      });
+    } catch (e) {}
     setInterval(heartbeat, HEARTBEAT_MS);
     setInterval(tick, 1000);
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') heartbeat(); });

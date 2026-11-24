@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink, FilePlus2, KanbanSquare, Sparkles, Star } from "lucide-react";
+import { ExternalLink, FilePlus2, KanbanSquare, MapPin, Sparkles, Star } from "lucide-react";
 import { db, newId, useCollection } from "@/lib/store";
 import { brl, dataBR, diasAte, nowIso } from "@/lib/format";
 import type { Opportunity } from "@/lib/types";
@@ -84,8 +84,15 @@ export function OpportunityCard({ o }: { o: Opportunity }) {
         <span className="ml-auto font-bold text-[15px] text-brand">{brl(o.valor)}</span>
       </div>
       <p className="mt-2 text-sm font-medium leading-snug line-clamp-3">{o.titulo}</p>
-      <div className="mt-1.5 text-xs text-muted">
-        {o.orgao} · {o.municipio}/{o.uf}
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+        {o.orgao && <span className="text-muted">{o.orgao}</span>}
+        {o.orgao && (o.municipio || o.uf) && <span className="text-muted/60">·</span>}
+        {(o.municipio || o.uf) && (
+          <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md text-[11.5px] border border-blue-200/80">
+            <MapPin size={11} className="shrink-0 text-blue-600" />
+            {o.municipio ? `${o.municipio}/${o.uf}` : o.uf}
+          </span>
+        )}
       </div>
       <div className="mt-1 text-xs text-muted">
         Propostas: {dataBR(o.abertura, true)} → {dataBR(o.encerramento, true)}

@@ -225,7 +225,7 @@ export function OrgaoTab() {
           {busca.data.orgaos.map((o) => (
             <button key={o.cnpj} className="w-full text-left rounded-lg px-3 py-2 hover:bg-bg" onClick={() => { setEntrada(fmtCnpj(o.cnpj)); void perfil.run(`/api/mercado/orgao?cnpj=${o.cnpj}&nomeOrgao=${encodeURIComponent(o.nome)}`); }}>
               <div className="text-sm font-semibold">{o.nome}</div>
-              <div className="text-[11px] text-muted">{fmtCnpj(o.cnpj)} · {o.municipio}/{o.uf}</div>
+              <div className="text-[11px] text-muted">{fmtCnpj(o.cnpj)} · <span className="font-semibold text-blue-700">{o.municipio}/{o.uf}</span></div>
             </button>
           ))}
         </div>

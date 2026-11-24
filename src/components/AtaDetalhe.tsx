@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ExternalLink, X } from "lucide-react";
+import { ExternalLink, MapPin, X } from "lucide-react";
 import { brl, dataBR } from "@/lib/format";
 import type { ItemCompra } from "@/lib/compra";
 import { ListaArquivos, VisualizadorArquivo, type ArquivoPncp } from "./Documentos";
@@ -67,7 +67,16 @@ export function AtaDetalhe({ id, onClose }: { id: string; onClose: () => void })
                 {d.adesao === false && <span className="badge bg-neutral-200 text-black">Sem adesão</span>}
               </div>
               <p className="text-[15px] font-medium leading-snug">{d.objeto}</p>
-              <p className="mt-1 text-xs text-muted">{d.unidade} · {d.municipio}/{d.uf}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                {d.unidade && <span className="text-muted">{d.unidade}</span>}
+                {d.unidade && (d.municipio || d.uf) && <span className="text-muted/60">·</span>}
+                {(d.municipio || d.uf) && (
+                  <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md text-[11.5px] border border-blue-200/80">
+                    <MapPin size={11} className="shrink-0 text-blue-600" />
+                    {d.municipio ? `${d.municipio}/${d.uf}` : d.uf}
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
