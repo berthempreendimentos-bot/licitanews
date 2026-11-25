@@ -115,8 +115,10 @@ export async function carregar(silencioso = false): Promise<CompraAdmin[]> {
       }
     }
     // Novas no topo (a mais recente primeiro); depois as demais, as mais desatualizadas primeiro.
-    const topo = recentes.map((c) => lista.find((x) => x.codigo_compra === c)).filter((c): c is CompraAdmin => !!c);
-    set({ erro: "", recentes, compras: [...topo, ...lista.filter((c) => !recentes.includes(c.codigo_compra))] });
+    const novasCompras = lista.filter((c) => recentes.includes(c.codigo_compra) || !c.ultima_captura);
+    const comCaptura = lista.filter((c) => !novasCompras.some((nc) => nc.codigo_compra === c.codigo_compra));
+    comCaptura.sort((a, b) => (a.ultima_captura || "").localeCompare(b.ultima_captura || ""));
+    set({ erro: "", recentes, compras: [...novasCompras, ...comCaptura] });
     return lista;
   } catch (e) {
     set({ erro: (e as Error).message });
@@ -188,14 +190,26 @@ function proxima(): string | null {
  * do lote atual terminaram (cada aba fecha ao terminar; a janela some com a última aba).
  */
 async function rodarFila() {
+  let processadasNoCiclo = 0;
+  let cicloAtual = 1;
+
   while (!parar) {
+    if (!prioridade.length && !fila.length) {
+      await esperar(VERIFICAR_NOVAS_MS, () => prioridade.length > 0 || fila.length > 0);
+      continue;
+    }
+
     const lote: string[] = [];
     for (let c = proxima(); c; c = lote.length < TAMANHO_LOTE ? proxima() : null) lote.push(c);
-    if (!lote.length) return;
+    if (!lote.length) {
+      await esperar(1000);
+      continue;
+    }
+
     set({ lote: estado.lote + 1 });
     await Promise.all(lote.map((c, i) => atualizar(c, Math.floor(i / ABAS_POR_JANELA))));
 
-    // Atualiza o horário de captura das compras processadas para que, ao voltarem para a fila, fiquem no fim
+    // Atualiza o horário de captura das compras processadas
     const agoraIso = new Date().toISOString();
     for (const codigo of lote) {
       const sit = estado.situacao[codigo];
@@ -203,6 +217,27 @@ async function rodarFila() {
         const item = estado.compras.find((x) => x.codigo_compra === codigo);
         if (item) item.ultima_captura = agoraIso;
       }
+    }
+
+    // 1. As compras que acabaram de ser atualizadas vão para o FINAL DA FILA (fazendo o loop contínuo)
+    for (const codigo of lote) {
+      if (ativas.has(codigo)) {
+        fila.push(codigo);
+      }
+    }
+
+    // 2. Move os itens do lote para o final da lista exibida na tabela
+    const loteSet = new Set(lote);
+    const naoProcessadas = estado.compras.filter((c) => !loteSet.has(c.codigo_compra));
+    const processadas = lote.map((cod) => estado.compras.find((c) => c.codigo_compra === cod)).filter(Boolean) as CompraAdmin[];
+    set({ compras: [...naoProcessadas, ...processadas] });
+
+    // 3. Incrementa o ciclo quando uma rodada completa de compras ativas for concluída
+    processadasNoCiclo += lote.length;
+    if (ativas.size > 0 && processadasNoCiclo >= ativas.size) {
+      cicloAtual++;
+      processadasNoCiclo = 0;
+      set({ ciclo: cicloAtual });
     }
 
     // Várias recusas no mesmo lote = sessão do gov.br expirada: abrir mais abas só piora.
@@ -254,23 +289,17 @@ export async function iniciar() {
   if (!versaoMinima(versao, VERSAO_MINIMA)) return set({ aviso: `A extensão está na v${versao}. O ciclo precisa da v${VERSAO_MINIMA} ou mais nova: baixe de novo em Conectar Robô.` });
   parar = false;
   prioridade = [];
-  set({ rodando: true, ciclo: 0, lote: 0 });
+  set({ rodando: true, ciclo: 1, lote: 0 });
   try {
-    // Ao terminar uma volta pela fila, começa a próxima na hora, até alguém clicar em Parar.
-    for (let n = 1; !parar; n++) {
-      set({ ciclo: n, lote: 0 });
-      await carregar(true);
-      // Nova ordem: novas na frente, antigas no meio, recentemente atualizadas no final
-      const ordem = construirFila();
-      fila = ordem;
-      set({ situacao: Object.fromEntries(ordem.map((c) => [c, { estado: "fila" as EstadoCiclo }])) });
-      // Nenhuma compra monitorada: espera alguém cadastrar uma (ou a próxima verificação da lista).
-      if (!ordem.length && !prioridade.length) {
-        await esperar(VERIFICAR_NOVAS_MS, () => prioridade.length > 0);
-        continue;
-      }
-      await rodarFila();
-    }
+    await carregar(true);
+    fila = construirFila();
+    const mapCompras = new Map(estado.compras.map((c) => [c.codigo_compra, c]));
+    const comprasOrdenadas = fila.map((cod) => mapCompras.get(cod)).filter(Boolean) as CompraAdmin[];
+    set({
+      compras: comprasOrdenadas.length ? comprasOrdenadas : estado.compras,
+      situacao: Object.fromEntries(fila.map((c) => [c, { estado: "fila" as EstadoCiclo }])),
+    });
+    await rodarFila();
   } finally {
     set({ rodando: false });
     void carregar(true);

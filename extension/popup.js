@@ -15,7 +15,7 @@ chrome.storage.local.get(['peppa_server', 'peppa_key'], function (cfg) {
         return t.url && (/^(http:\/\/(localhost|127\.0\.0\.1|192\.168\.18\.28)(:\d+)?|https:\/\/[^/]+\.vercel\.app)\//.test(t.url));
       });
       if (peppa && peppa.url) {
-        try { $('server').value = new URL(peppa.url).origin; } catch (e) {}
+        try { $('server').value = new URL(peppa.url).origin; } catch (e) { }
       } else {
         $('server').value = 'http://localhost:3000';
       }

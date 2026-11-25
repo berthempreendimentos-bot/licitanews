@@ -563,12 +563,22 @@ export default function Monitoramento() {
     alertas: pregoes.filter((p) => alertasNovos(p.codigo_compra) > 0).length,
     encerrados: pregoes.filter((p) => p.status === "Encerrado").length,
   };
-  const filtrados = pregoes.filter((p) => {
-    if (filtro === "ativos" && p.status === "Encerrado") return false;
-    if (filtro === "encerrados" && p.status !== "Encerrado") return false;
-    if (filtro === "alertas" && !alertasNovos(p.codigo_compra)) return false;
-    return combina(p, busca);
-  });
+  const filtrados = pregoes
+    .filter((p) => {
+      if (filtro === "ativos" && p.status === "Encerrado") return false;
+      if (filtro === "encerrados" && p.status !== "Encerrado") return false;
+      if (filtro === "alertas" && !alertasNovos(p.codigo_compra)) return false;
+      return combina(p, busca);
+    })
+    .sort((a, b) => {
+      // 1. Novas (nunca capturadas) na frente
+      const aUltima = a.ultima_captura || "";
+      const bUltima = b.ultima_captura || "";
+      if (!aUltima && bUltima) return -1;
+      if (aUltima && !bUltima) return 1;
+      // 2. Das já capturadas, as mais antigas primeiro (as atualizadas recentemente vão para o final da fila)
+      return aUltima.localeCompare(bUltima);
+    });
   const current = filtrados.find((p) => p.id === selected) ?? filtrados[0] ?? null;
   const currentMsgs = current ? msgs.filter((m) => m.codigo_compra === current.codigo_compra) : [];
   const [carregandoChat, setCarregandoChat] = useState(false);
