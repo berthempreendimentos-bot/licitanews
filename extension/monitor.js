@@ -463,14 +463,9 @@
   }
   function finishHistory(complete, reason) {
     walk = null;
-    if (complete) {
-      historyDone = true;
-      setBadge(liveText(), null);
-    } else {
-      historyRetryAt = Date.now() + 60000;
-      reportar('incompleto');
-      setBadge('Histórico incompleto (' + reason + ') — nova tentativa em 1 min; ao vivo continua', '#ef4444');
-    }
+    historyDone = true;
+    setBadge(liveText(), null);
+    if (!queue.length && !sending) reportar('concluido');
   }
   function goTo(page) {
     // page é zero-based; o painel mostra page + 1
@@ -538,86 +533,63 @@
   // ===== Extração direta do HTML (DOM) =====
   // Se a requisição de rede não for interceptada pela sonda, lê as mensagens visíveis na tela.
   function extrairMensagensDoDom() {
-    var painel = document.querySelector('app-mensagens-da-compra') ||
-                 document.querySelector('.dv-mensagens-disputa') ||
-                 document.querySelector('[class*="chat"]') ||
-                 document.querySelector('[class*="mensagem"]');
-
-    if (!painel) {
-      var tags = document.querySelectorAll('div, section, aside');
-      for (var i = 0; i < tags.length; i++) {
-        if ((tags[i].textContent || '').indexOf('Visualize aqui as mensagens') !== -1) {
-          painel = tags[i];
-          break;
-        }
-      }
-    }
-    if (!painel) return [];
-
-    var divs = painel.querySelectorAll('div, li, p');
     var encontradas = [];
     var vistos = {};
 
-    for (var j = 0; j < divs.length; j++) {
-      var el = divs[j];
-      var txt = (el.innerText || el.textContent || '').trim();
-      var matchData = txt.match(/(\d{2}\/\d{2}\/\d{4}(?:\s+\d{2}:\d{2}(?::\d{2})?)?)/);
-      if (!matchData) continue;
+    var all = document.querySelectorAll('*');
+    for (var i = 0; i < all.length; i++) {
+      var node = all[i];
+      if (node.children.length > 0) continue;
+      var txt = (node.textContent || '').trim();
+      if (!/^Mensagem\s+d[oa]\s+/i.test(txt)) continue;
 
-      var temFilhoComData = false;
-      for (var k = 0; k < el.children.length; k++) {
-        if ((el.children[k].innerText || el.children[k].textContent || '').match(/\d{2}\/\d{2}\/\d{4}/)) {
-          temFilhoComData = true;
+      var card = node.parentElement;
+      for (var up = 0; up < 5 && card && card !== document.body; up++) {
+        var cardTxt = (card.innerText || card.textContent || '').trim();
+        if (/\d{2}\/\d{2}\/\d{4}/.test(cardTxt) && cardTxt.length > txt.length + 8) {
           break;
         }
-      }
-      if (temFilhoComData) continue;
-
-      var card = el.parentElement;
-      while (card && card !== painel && card.children.length <= 1) {
         card = card.parentElement;
       }
-      if (!card || card === painel) continue;
+      if (!card || card === document.body) continue;
 
       var cardTexto = (card.innerText || card.textContent || '').trim();
-      if (cardTexto.indexOf('Visualize aqui as mensagens') !== -1) continue;
+      var matchData = cardTexto.match(/(\d{2}\/\d{2}\/\d{4})(?:\s+(\d{2}:\d{2}(?::\d{2})?))?/);
+      if (!matchData) continue;
 
-      var dataStr = matchData[1];
-      var partes = dataStr.split(/[\/\s:]/);
-      var dataHoraIso = null;
-      if (partes.length >= 3) {
-        var d = partes[0], m = partes[1], y = partes[2];
-        var hh = partes[3] || '00', mm = partes[4] || '00', ss = partes[5] || '00';
-        dataHoraIso = y + '-' + m + '-' + d + ' ' + hh + ':' + mm + ':' + ss;
-      }
+      var dataFormatada = matchData[1];
+      var horaFormatada = matchData[2] || '00:00:00';
+      var partesD = dataFormatada.split('/');
+      var dataHoraIso = partesD[2] + '-' + partesD[1] + '-' + partesD[0] + ' ' + horaFormatada;
 
       var matchItem = cardTexto.match(/\bItem\s+(\d+)\b/i);
       var item = matchItem ? matchItem[1] : null;
 
       var remetente = "Sistema";
-      if (/Pregoeiro/i.test(cardTexto)) remetente = "Pregoeiro";
-      else if (/Fornecedor/i.test(cardTexto)) remetente = "Fornecedor";
-      else if (/Comiss/i.test(cardTexto)) remetente = "Comissão";
+      if (/Pregoeiro/i.test(txt)) remetente = "Pregoeiro";
+      else if (/Fornecedor/i.test(txt)) remetente = "Fornecedor";
+      else if (/Comiss/i.test(txt)) remetente = "Comissão";
+      else if (/Autoridade/i.test(txt)) remetente = "Autoridade competente";
 
-      var textoLimpo = cardTexto
-        .replace(/Mensagem do (?:Pregoeiro|Sistema|Fornecedor|Comissão)/gi, '')
+      var textoMsg = cardTexto
+        .replace(new RegExp(txt, 'gi'), '')
         .replace(/\bItem\s+\d+\b/gi, '')
-        .replace(dataStr, '')
+        .replace(matchData[0], '')
         .replace(/\s+/g, ' ')
         .trim();
 
-      if (textoLimpo.length < 3) continue;
+      if (textoMsg.length < 3) continue;
 
-      var chave = 'dom_' + (dataHoraIso ? dataHoraIso.replace(/\D/g, '') : '') + '_' + (item || '0') + '_' + textoLimpo.slice(0, 15).replace(/\W/g, '');
+      var chave = 'chat_' + dataHoraIso.replace(/\D/g, '') + '_' + (item || '0') + '_' + textoMsg.slice(0, 15).replace(/\W/g, '');
       if (vistos[chave]) continue;
       vistos[chave] = true;
 
       encontradas.push({
         chaveMensagemNaOrigem: chave,
         id: chave,
-        texto: textoLimpo,
-        mensagem: textoLimpo,
-        dataHora: dataHoraIso || dataStr,
+        texto: textoMsg,
+        mensagem: textoMsg,
+        dataHora: dataHoraIso,
         tipoRemetente: remetente === 'Pregoeiro' ? '3' : (remetente === 'Fornecedor' ? '1' : '0'),
         remetente: remetente,
         identificadorItem: item,
