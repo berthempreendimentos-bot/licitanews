@@ -55,15 +55,24 @@ export async function POST(req: Request) {
       break;
     }
   }
+
+  // Se nenhum for admin, verifica se algum dos usuários vinculados à chave monitora esta compra
+  if (!ehUmAdmin && codigo !== "0000000000") {
+    const userIds = emps.map((e) => e.user_id as string);
+    const { data: pregUser } = await sb
+      .from("records")
+      .select("user_id")
+      .eq("collection", "pregoes")
+      .eq("data->>codigo_compra", codigo)
+      .in("user_id", userIds)
+      .maybeSingle();
+
+    if (!pregUser) return NextResponse.json({ ok: true, somente_admin: true, synced: 0 });
+    const dono = emps.find((e) => e.user_id === pregUser.user_id);
+    if (dono) emp = dono;
+  }
   const userId = emp.user_id as string;
   const empresa = emp.data as Empresa;
-
-  // A extensão do administrador captura para todos os usuários que monitoram a compra.
-  // Usuário comum captura para suas próprias compras cadastradas (ou teste 0000000000).
-  if (!ehUmAdmin && codigo !== "0000000000") {
-    const { data: pregUser } = await sb.from("records").select("id").eq("collection", "pregoes").eq("data->>codigo_compra", codigo).eq("user_id", userId).maybeSingle();
-    if (!pregUser) return NextResponse.json({ ok: true, somente_admin: true, synced: 0 });
-  }
   const { data: pregRows } = await sb.from("records").select("user_id, data").eq("collection", "pregoes").eq("data->>codigo_compra", codigo);
   // Um pregão por usuário (o primeiro, como antes).
   const porUsuario = new Map<string, Pregao>();
