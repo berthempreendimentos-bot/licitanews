@@ -573,14 +573,12 @@ export default function Monitoramento() {
   const currentMsgs = current ? msgs.filter((m) => m.codigo_compra === current.codigo_compra) : [];
   const [carregandoChat, setCarregandoChat] = useState(false);
 
-  // Busca na hora as mensagens do pregão selecionado se a coleção completa ainda estiver carregando
+  // Busca sempre as mensagens mais atualizadas do pregão selecionado no Supabase
   useEffect(() => {
     if (!current || !supabase) return;
-    const jaTem = msgs.some((m) => m.codigo_compra === current.codigo_compra);
-    if (jaTem || (current.mensagens || 0) === 0) return;
 
     let cancelado = false;
-    setCarregandoChat(true);
+    setCarregandoChat(!msgs.some((m) => m.codigo_compra === current.codigo_compra));
 
     async function buscarDireto() {
       try {
@@ -611,7 +609,7 @@ export default function Monitoramento() {
     void buscarDireto();
 
     return () => { cancelado = true; };
-  }, [current?.codigo_compra, msgs.length]);
+  }, [current?.codigo_compra]);
 
   // Contagem direto das mensagens salvas (o contador do pregão zera se ele for removido e cadastrado de novo).
   const porCompra = new Map<string, { n: number; ultima: string | null }>();

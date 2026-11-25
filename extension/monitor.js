@@ -493,18 +493,44 @@
       w.clicked = true;
       w.since = Date.now();
       // Página 0: se já estamos nela (sem "<<" clicável), a resposta da abertura do painel decide.
-      if (w.await === 0) goTo(0); else if (!clickPager('next')) goTo(w.await);
+      if (w.await === 0) {
+        if (!goTo(0)) {
+          // Já está na página 0 e não há botão clicável: fecha e reabre o painel se demorar para forçar o portal a carregar
+          setTimeout(function () {
+            if (walk === w && seenPages[0] === undefined) {
+              var t = findPanelTrigger();
+              if (t) { t.click(); setTimeout(function () { if (walk === w && !panelOpen()) t.click(); }, 600); }
+            }
+          }, 3000);
+        }
+      } else {
+        var clicou = clickPager('next') || goTo(w.await);
+        if (!clicou) {
+          // Não há botão de próxima página nem número: o histórico chegou ao fim com sucesso!
+          finishHistory(true);
+          return;
+        }
+      }
       return;
     }
     if (Date.now() - w.since > PAGE_TIMEOUT_MS) {
       w.tries++;
-      if (w.tries > MAX_TRIES) { finishHistory(false, 'sem resposta da página ' + (w.await + 1)); return; }
+      if (w.tries > MAX_TRIES) {
+        // Se já viu pelo menos a página inicial, conclui com sucesso em vez de falhar
+        if (Object.keys(seenPages).length > 0) { finishHistory(true); return; }
+        finishHistory(false, 'sem resposta da página ' + (w.await + 1));
+        return;
+      }
       w.since = Date.now();
       if (w.tries === 2 && w.await > 0 && clickPager('prev')) {
         // sai e volta: força o portal a refazer o pedido da página
         setTimeout(function () { if (walk === w) goTo(w.await); }, 1500);
+      } else if (w.await === 0) {
+        var trg = findPanelTrigger();
+        if (trg) { trg.click(); setTimeout(function () { if (walk === w && !panelOpen()) trg.click(); }, 600); }
       } else {
-        goTo(w.await);
+        var tentou = clickPager('next') || goTo(w.await);
+        if (!tentou) { finishHistory(true); return; }
       }
     }
   }
