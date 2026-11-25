@@ -644,7 +644,7 @@ export default function Monitoramento() {
 
       <div className="card p-4 mt-4 text-xs text-muted">
         A captura automática do chat é feita pela extensão PEPPACORP Monitor. Instale e conecte em
-        <Link href="/conectar-robo" className="mx-1 font-semibold text-accent">Conectar Robô</Link>
+        <Link href="/conectar-robo" className="mx-1 font-semibold text-accent">Conectar Monitor</Link>
         e cadastre a compra acima: a extensão abre o acompanhamento no Comprasnet e captura o chat sozinha.
       </div>
 

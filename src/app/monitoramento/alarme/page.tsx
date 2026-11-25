@@ -51,7 +51,7 @@ export default function Alarme() {
 
   async function testar() {
     if (!(await detectarExtensao())) {
-      return setAviso({ ok: false, texto: "Instale e conecte a extensão em Conectar Robô para testar o alarme." });
+      return setAviso({ ok: false, texto: "Instale e conecte a extensão em Conectar Monitor para testar o alarme." });
     }
     if (!cfg.popup && !cfg.som) return setAviso({ ok: false, texto: "Pop-up e alarme sonoro estão desligados: não há o que testar." });
     setAviso({ ok: true, texto: cfg.som ? "Tocando o alarme de teste. Silencie pelo pop-up, pela faixa vermelha no topo ou pelo ícone da extensão." : "Pop-up de teste enviado." });

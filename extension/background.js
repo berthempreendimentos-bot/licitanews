@@ -80,10 +80,12 @@ async function ingest(codigo, messages) {
   } catch (e) {
     return { ok: false, error: 'PEPPACORP fora do ar (' + (e && e.message || e) + ')' };
   }
-  if (res.status === 503) {
+  if (res.status === 503 || res.status === 401) {
     const b = await viaBridge(cfg, codigo, messages);
-    if (b.ok) b.via = 'ponte';
-    return b;
+    if (b.ok) {
+      b.via = 'ponte';
+      return b;
+    }
   }
   if (res.status === 401) return { ok: false, error: 'token inválido' };
   if (res.status < 200 || res.status >= 300) return { ok: false, error: (res.data && res.data.error) || 'HTTP ' + res.status };

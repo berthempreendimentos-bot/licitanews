@@ -36,22 +36,34 @@ export async function POST(req: Request) {
     .from("records")
     .select("user_id, data")
     .eq("collection", "empresa")
-    .eq("data->>ingest_key", key);
-  if (empErr || !emps || emps.length === 0) return NextResponse.json({ error: "chave inválida" }, { status: 401 });
+    .eq("data->>ingest_key", key.trim());
+  if (empErr) {
+    console.error("[ingest] Supabase query failed:", empErr);
+    return NextResponse.json({ error: "Supabase temporariamente inacessível" }, { status: 503 });
+  }
+  if (!emps || emps.length === 0) {
+    return NextResponse.json({ error: "chave inválida" }, { status: 401 });
+  }
 
   // Se houver mais de uma conta com a mesma chave (ex.: mesma empresa), prioriza quem é admin
   let emp = emps[0];
+  let ehUmAdmin = false;
   for (const item of emps) {
     if (await ehAdmin(sb, item.user_id as string)) {
       emp = item;
+      ehUmAdmin = true;
       break;
     }
   }
   const userId = emp.user_id as string;
   const empresa = emp.data as Empresa;
 
-  // Só a extensão do administrador captura (e grava para todos os usuários que monitoram a compra).
-  if (!(await ehAdmin(sb, userId))) return NextResponse.json({ ok: true, somente_admin: true, synced: 0 });
+  // A extensão do administrador captura para todos os usuários que monitoram a compra.
+  // Usuário comum captura para suas próprias compras cadastradas (ou teste 0000000000).
+  if (!ehUmAdmin && codigo !== "0000000000") {
+    const { data: pregUser } = await sb.from("records").select("id").eq("collection", "pregoes").eq("data->>codigo_compra", codigo).eq("user_id", userId).maybeSingle();
+    if (!pregUser) return NextResponse.json({ ok: true, somente_admin: true, synced: 0 });
+  }
   const { data: pregRows } = await sb.from("records").select("user_id, data").eq("collection", "pregoes").eq("data->>codigo_compra", codigo);
   // Um pregão por usuário (o primeiro, como antes).
   const porUsuario = new Map<string, Pregao>();
