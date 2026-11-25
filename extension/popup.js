@@ -7,23 +7,17 @@ function show(ok, text) {
   $('status').textContent = text;
 }
 
-chrome.storage.local.get(['peppa_server', 'peppa_key'], function (cfg) {
-  $('server').value = (cfg && cfg.peppa_server) || 'http://localhost:3000';
+chrome.storage.local.get('peppa_key', function (cfg) {
   $('key').value = (cfg && cfg.peppa_key) || '';
 });
 
 $('save').addEventListener('click', function () {
-  var server = ($('server').value || '').trim().replace(/\/+$/, '') || 'http://localhost:3000';
   var key = ($('key').value || '').trim();
-  if (!/^https?:\/\//.test(server)) {
-    show(false, 'Informe uma URL válida (ex: http://localhost:3000)');
-    return;
-  }
   if (!key || key.length < 16) {
     show(false, 'O token deve ter pelo menos 16 caracteres.');
     return;
   }
-  chrome.runtime.sendMessage({ action: 'peppa_save_config', server: server, key: key }, function (resp) {
+  chrome.runtime.sendMessage({ action: 'peppa_save_config', key: key }, function (resp) {
     if (!resp || !resp.ok) { show(false, (resp && resp.error) || 'Falha ao salvar.'); return; }
     show(true, 'Salvo com sucesso! Recarregue a página do Comprasnet.');
   });

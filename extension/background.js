@@ -4,8 +4,10 @@
 //  2. Se o servidor estiver em modo demonstração (503), entrega à aba do PEPPACORP aberta
 //     neste navegador (ponte), que grava nos dados locais com as mesmas regras.
 
+const PEPPA_SERVER = 'https://peppacorp-licita.vercel.app';
+
 function getConfig() {
-  return chrome.storage.local.get(['peppa_server', 'peppa_key']);
+  return chrome.storage.local.get('peppa_key').then(cfg => ({ peppa_server: PEPPA_SERVER, peppa_key: cfg.peppa_key }));
 }
 
 function originOf(url) {
@@ -25,12 +27,11 @@ async function viaServer(cfg, codigo, messages) {
 }
 
 // Endereços onde a ponte (bridge.js) roda — mesma lista do manifesto.
-// Endereços onde a ponte (bridge.js) roda pelo manifesto: local, rede e Vercel.
 const BRIDGE_HOSTS = /^(http:\/\/(localhost|127\.0\.0\.1|[^/]+\.localhost|192\.168\.18\.28)(:\d+)?|https:\/\/[^/]+\.vercel\.app)\//;
 // Domínio próprio do PEPPACORP (ex.: licita.suaempresa.com.br), configurado no popup.
 let servidorOrigem = null;
-chrome.storage.local.get('peppa_server').then((c) => { servidorOrigem = originOf(c.peppa_server || ''); });
-chrome.storage.onChanged.addListener((m, area) => { if (area === 'local' && m.peppa_server) servidorOrigem = originOf(m.peppa_server.newValue || ''); });
+chrome.storage.local.get('peppa_key').then((c) => { servidorOrigem = originOf(PEPPA_SERVER); });
+chrome.storage.onChanged.addListener((m, area) => { if (area === 'local' && m.peppa_key) servidorOrigem = originOf(PEPPA_SERVER); });
 const ehPeppacorp = (url) => !!url && (BRIDGE_HOSTS.test(url) || (!!servidorOrigem && originOf(url) === servidorOrigem));
 
 /** Domínio fora do manifesto: registra a ponte nele (precisa da permissão concedida no popup). */
@@ -294,16 +295,15 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     return true;
   }
   if (req.action === 'peppa_save_config') {
-    const server = String(req.server || '').trim().replace(/\/+$/, '');
     const key = String(req.key || '').trim();
-    if (!/^https?:\/\//.test(server) || key.length < 16) {
-      sendResponse({ ok: false, error: 'Endereço do PEPPACORP ou token inválidos.' });
+    if (key.length < 16) {
+      sendResponse({ ok: false, error: 'O token deve ter pelo menos 16 caracteres.' });
       return false;
     }
-    // Outra conta/endereço: os avisos recomeçam a partir de agora.
+    // Outra conta: os avisos recomeçam a partir de agora.
     chrome.storage.local.remove('peppa_avisos_desde');
-    chrome.storage.local.set({ peppa_server: server, peppa_key: key }, () => {
-      registrarPonte(server).catch(() => {}).finally(() => { sendResponse({ ok: true }); buscarAvisos().catch(() => {}); });
+    chrome.storage.local.set({ peppa_key: key }, () => {
+      registrarPonte(PEPPA_SERVER).catch(() => {}).finally(() => { sendResponse({ ok: true }); buscarAvisos().catch(() => {}); });
     });
     return true;
   }

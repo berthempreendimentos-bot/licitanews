@@ -16,6 +16,8 @@
   if (window.__PEPPA_MONITOR__) return;
   window.__PEPPA_MONITOR__ = true;
 
+  const PEPPA_SERVER = 'https://peppacorp-licita.vercel.app';
+
   var PAGE_SIZE_DEFAULT = 10;
   var HEARTBEAT_MS = 45000;
   var LIVE_REFRESH_MS = 30000;
@@ -657,13 +659,19 @@
   }
 
   function boot(cfg) {
-    if (!cfg.peppa_server || !cfg.peppa_key) {
+    if (!cfg.peppa_key) {
       setBadge('Conecte a extensão em PEPPACORP → Conectar Robô', '#f59e0b');
       return;
     }
     stopped = false;
     setBadge('Conectando à compra ' + compra + '…', '#f59e0b');
     heartbeat();
+  }
+
+  function getConfig() {
+    return new Promise(resolve => {
+      chrome.storage.local.get('peppa_key', cfg => resolve({ peppa_server: PEPPA_SERVER, peppa_key: cfg.peppa_key }));
+    });
   }
 
   chrome.runtime.onMessage.addListener(function (req, sender, sendResponse) {
@@ -682,11 +690,11 @@
     if (!document.body) { setTimeout(start, 300); return; }
     if (!isContextValid()) return;
     try {
-      chrome.storage.local.get(['peppa_server', 'peppa_key'], boot);
+      getConfig().then(boot);
       chrome.storage.onChanged.addListener(function (changes, area) {
-        if (!isContextValid() || area !== 'local' || (!changes.peppa_server && !changes.peppa_key)) return;
+        if (!isContextValid() || area !== 'local' || !changes.peppa_key) return;
         registered = false;
-        try { chrome.storage.local.get(['peppa_server', 'peppa_key'], boot); } catch (e) {}
+        getConfig().then(boot);
       });
     } catch (e) {}
     setInterval(heartbeat, HEARTBEAT_MS);

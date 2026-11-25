@@ -203,6 +203,60 @@ async function rodarFila() {
   }
 }
 
+/**
+ * Constrói a fila de monitoramento com a seguinte prioridade:
+ * 1. NOVAS compras (em `recentes`) → FRENTE da fila (prioridade máxima)
+ * 2. ANTIGAS (não atualizadas recentemente, não em `recentes`) → MEIO da fila
+ * 3. RECENTEMENTE ATUALIZADAS (com `ultima_captura` recente) → FINAL da fila
+ * 
+ * Isso garante que compras que acabaram de ser capturadas não sejam re-verificadas
+ * imediatamente, dando chance para as outras serem processadas.
+ */
+function construirFila(): string[] {
+  const agora = Date.now();
+  const RECENTEMENTE_ATUALIZADA_MS = 30 * 60 * 1000; // 30 minutos
+  
+  // Separa as compras ativas em três grupos
+  const novas = estado.recentes.filter((c) => ativas.has(c));
+  const demais = [...ativas].filter((c) => !estado.recentes.includes(c));
+  
+  // Busca ultima_captura de cada compra no estado.compras
+  const capturaMap = new Map<string, string | null>();
+  for (const c of estado.compras) {
+    capturaMap.set(c.codigo_compra, c.ultima_captura);
+  }
+  
+  // Divide "demais" em antigas vs recentemente atualizadas
+  const antigas: string[] = [];
+  const recentementeAtualizadas: string[] = [];
+  
+  for (const codigo of demais) {
+    const ultima = capturaMap.get(codigo) ?? null;
+    if (ultima && (agora - new Date(ultima).getTime()) < RECENTEMENTE_ATUALIZADA_MS) {
+      recentementeAtualizadas.push(codigo);
+    } else {
+      antigas.push(codigo);
+    }
+  }
+  
+  // Ordena antigas pela mais antiga primeiro (menos atualizadas primeiro)
+  antigas.sort((a, b) => {
+    const ta = capturaMap.get(a) ?? "";
+    const tb = capturaMap.get(b) ?? "";
+    return ta.localeCompare(tb);
+  });
+  
+  // Ordena recentemente atualizadas pela mais recente primeiro
+  recentementeAtualizadas.sort((a, b) => {
+    const ta = capturaMap.get(a) ?? "";
+    const tb = capturaMap.get(b) ?? "";
+    return tb.localeCompare(ta); // mais recente primeiro no final
+  });
+  
+  // Ordem final: novas → antigas → recentemente atualizadas
+  return [...novas, ...antigas, ...recentementeAtualizadas];
+}
+
 export async function iniciar() {
   if (estado.rodando) return;
   set({ aviso: "" });
@@ -217,8 +271,8 @@ export async function iniciar() {
     for (let n = 1; !parar; n++) {
       set({ ciclo: n, lote: 0 });
       await carregar(true);
-      // Mesma ordem da tabela: novas primeiro, depois as mais desatualizadas.
-      const ordem = [...estado.recentes.filter((c) => ativas.has(c)), ...[...ativas].filter((c) => !estado.recentes.includes(c))];
+      // Nova ordem: novas na frente, antigas no meio, recentemente atualizadas no final
+      const ordem = construirFila();
       fila = ordem;
       set({ situacao: Object.fromEntries(ordem.map((c) => [c, { estado: "fila" as EstadoCiclo }])) });
       // Nenhuma compra monitorada: espera alguém cadastrar uma (ou a próxima verificação da lista).
