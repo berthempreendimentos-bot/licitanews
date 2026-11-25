@@ -42,7 +42,14 @@ export function tituloPregao(p: { codigo_compra: string; titulo: string }) {
   return c ? `UASG ${c.uasg} — ${c.modalidade} ${c.numero}` : p.titulo;
 }
 
-/** "ÓRGÃO — CIDADE/UF" */
+/** Normaliza a situação do monitoramento para exibição: suspensa → "Excluída", aguardando proposta → "Não foi iniciada". */
+export function rotuloSituacaoMonitoramento(s: string | null | undefined): string {
+  const t = (s ?? "").trim();
+  if (!t) return "—";
+  if (/suspens/i.test(t)) return "Excluída";
+  if (/aguardando\s*proposta/i.test(t)) return "Não foi iniciada";
+  return t;
+}
 export function orgaoPregao(p: { orgao?: string; municipio?: string; uf?: string }) {
   const local = [p.municipio, p.uf].filter(Boolean).join("/");
   return [p.orgao, local].filter(Boolean).join(" — ");

@@ -11,18 +11,32 @@ export function useAdmin(): boolean | null {
   const [admin, setAdmin] = useState<boolean | null>(supabase ? null : true);
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => setAdmin(data.session?.user.app_metadata?.role === "admin"));
+    (async () => {
+      let { data } = await supabase.auth.getSession();
+      if (data.session?.user.app_metadata?.role !== "admin") {
+        const r = await supabase.auth.refreshSession();
+        if (r.data.session) data = r.data;
+      }
+      setAdmin(data.session?.user.app_metadata?.role === "admin");
+    })();
   }, []);
   return admin;
 }
 
 /** fetch com o token do usuário logado (as rotas conferem quem é; as /api/admin, se é administrador). */
 export async function fetchComLogin(url: string, init: RequestInit = {}) {
-  const { data } = (await supabase?.auth.getSession()) ?? { data: { session: null } };
-  const headers = new Headers(init.headers);
-  headers.set("Authorization", `Bearer ${data.session?.access_token ?? ""}`);
-  if (init.body) headers.set("Content-Type", "application/json");
-  const r = await fetch(url, { ...init, headers });
+  const tentar = async () => {
+    const { data } = (await supabase?.auth.getSession()) ?? { data: { session: null } };
+    const headers = new Headers(init.headers);
+    headers.set("Authorization", `Bearer ${data.session?.access_token ?? ""}`);
+    if (init.body) headers.set("Content-Type", "application/json");
+    return fetch(url, { ...init, headers });
+  };
+  let r = await tentar();
+  if (r.status === 403 && supabase) {
+    await supabase.auth.refreshSession();
+    r = await tentar();
+  }
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
   return d;

@@ -7,6 +7,7 @@ import { Empty, PageHeader, StatCard } from "@/components/ui";
 import { corEvento, EventoTag } from "@/components/EventoTag";
 import { db, newId, useCollection, useEmpresa } from "@/lib/store";
 import { alertaCorrespondeConfig, alertasDaEmpresa, codigoCompraFromLink, comprasnetUrl, itemDoTexto, orgaoPregao, parseCodigoCompra, pncpFromLink, rotuloRemetente, tituloPregao } from "@/lib/monitor";
+import { rotuloSituacaoMonitoramento } from "@/lib/monitor";
 import { abrirNoComprasnet } from "@/lib/extensao";
 import { supabase } from "@/lib/supabase";
 import { retroSearch } from "@/lib/ingestLocal";
@@ -332,6 +333,11 @@ function PregaoCard({ p, selected, onSelect, onAbrir, alertas, mensagens, ultima
   return (
     <div onClick={onSelect} className={`card p-4 cursor-pointer transition hover:border-accent/50 ${selected ? "border-accent ring-2 ring-accent-soft" : ""} ${ativo ? "" : "opacity-60"}`}>
       <div className="font-bold text-[15px] leading-snug text-brand truncate">{tituloPregao(p)}</div>
+      {p.situacao_monitoramento && (
+        <div className="mt-1">
+          <span className="badge bg-bg text-muted">{rotuloSituacaoMonitoramento(p.situacao_monitoramento)}</span>
+        </div>
+      )}
       <div className="mt-1 flex items-center gap-1.5 text-xs text-muted min-w-0">
         <Building2 size={12} className="shrink-0" />
         <span className="truncate" title={p.orgao}>{p.orgao || (valido ? "Buscando dados do órgão…" : "Órgão não identificado")}</span>
@@ -633,10 +639,8 @@ export default function Monitoramento() {
       {err && <div className="-mt-2 mb-4 text-xs text-danger">{err}</div>}
       {info && <div className="-mt-2 mb-4 text-xs text-ok">{info}</div>}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 gap-3 mb-4">
         <StatCard label="Pregões monitorados" value={pregoes.length} />
-        <StatCard label="Capturando agora" value={pregoes.filter((p) => p.status === "Capturando").length} />
-        <StatCard label="Mensagens capturadas" value={msgs.length} />
         <StatCard label="Alertas não lidos" value={alertsConfigurados.filter((a) => !a.lido).length} accent />
       </div>
 

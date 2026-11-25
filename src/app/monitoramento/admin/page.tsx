@@ -9,6 +9,7 @@ import {
   TAMANHO_LOTE, TEMPO_LIMITE_MS, useCiclo, VERIFICAR_NOVAS_MS, type EstadoCiclo,
 } from "@/lib/cicloAdmin";
 import { dataBR } from "@/lib/format";
+import { rotuloSituacaoMonitoramento } from "@/lib/monitor";
 
 const ROTULO: Record<EstadoCiclo, { texto: string; cor: string }> = {
   fila: { texto: "Na fila", cor: "bg-bg text-muted" },
@@ -18,7 +19,7 @@ const ROTULO: Record<EstadoCiclo, { texto: string; cor: string }> = {
   concluido: { texto: "Atualizado", cor: "bg-ok/12 text-ok" },
   incompleto: { texto: "Parcial — pulado", cor: "bg-warn/15 text-warn" },
   sem_resposta: { texto: "Sem resposta — pulado", cor: "bg-danger/10 text-danger" },
-  sem_chat: { texto: "Sem chat — pulado", cor: "bg-warn/15 text-warn" },
+  sem_chat: { texto: "Ainda não foi iniciada", cor: "bg-bg text-muted" },
   sem_acesso: { texto: "Acesso recusado no portal", cor: "bg-danger/10 text-danger" },
   encerrado: { texto: "Encerrado", cor: "bg-bg text-muted" },
   nao_monitorada: { texto: "Não monitorada", cor: "bg-bg text-muted" },
@@ -35,9 +36,13 @@ export default function Page() {
   );
 }
 
+import { useEffect } from "react";
+
 function MonitoramentoAdmin() {
   // O ciclo roda em segundo plano (src/lib/cicloAdmin.ts): esta página só mostra e controla.
   const { compras, recentes, situacao, rodando, ciclo, lote, carregando, erro, aviso } = useCiclo();
+
+  useEffect(() => { void carregar(); }, []);
 
   const valores = Object.values(situacao);
   const feitos = valores.filter((s) => !["fila", "abrindo", "capturando", "captcha"].includes(s.estado)).length;
@@ -114,6 +119,9 @@ function MonitoramentoAdmin() {
                     <td className="px-3 py-1.5 truncate font-medium" title={[c.orgao, local, c.codigo_compra].filter(Boolean).join(" · ")}>
                       {recentes.includes(c.codigo_compra) && <span className="badge mr-1.5 bg-accent-soft text-accent">Nova</span>}
                       {c.titulo}
+                      {c.situacao_monitoramento && (
+                        <span className="ml-2 badge bg-bg text-muted">{rotuloSituacaoMonitoramento(c.situacao_monitoramento)}</span>
+                      )}
                     </td>
                     <td className="px-3 py-1.5 whitespace-nowrap text-xs text-muted">{c.ultima_captura ? dataBR(c.ultima_captura, true) : "Nunca"}</td>
                     <td className="px-3 py-1.5 whitespace-nowrap">

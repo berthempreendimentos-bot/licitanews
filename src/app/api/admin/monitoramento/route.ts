@@ -11,6 +11,7 @@ export type CompraAdmin = {
   uf?: string;
   usuarios: number;
   ultima_captura: string | null;
+  situacao_monitoramento?: string | null;
 };
 
 /**
@@ -33,10 +34,11 @@ export async function GET(req: Request) {
     if (!atual) {
       porCodigo.set(p.codigo_compra, {
         codigo_compra: p.codigo_compra, titulo: p.titulo, orgao: p.orgao, municipio: p.municipio, uf: p.uf,
-        usuarios: 0, ultima_captura: p.ultima_captura, donos: new Set(),
+        usuarios: 0, ultima_captura: p.ultima_captura, situacao_monitoramento: p.situacao_monitoramento, donos: new Set(),
       });
     } else if (p.ultima_captura && (!atual.ultima_captura || p.ultima_captura > atual.ultima_captura)) {
       atual.ultima_captura = p.ultima_captura;
+      if (p.situacao_monitoramento) atual.situacao_monitoramento = p.situacao_monitoramento;
     }
     porCodigo.get(p.codigo_compra)!.donos.add(r.user_id as string);
   }
