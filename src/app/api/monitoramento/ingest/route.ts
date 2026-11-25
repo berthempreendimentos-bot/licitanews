@@ -72,6 +72,31 @@ export async function POST(req: Request) {
   const ativos = [...porUsuario].filter(([, p]) => p.status !== "Encerrado");
   if (!ativos.length) return NextResponse.json({ ok: true, encerrado: true, synced: 0 });
 
+  const suspenso = raw.some((m) => /suspens/i.test(JSON.stringify(m)));
+  if (suspenso) {
+    const agora = new Date().toISOString();
+    const rows: Linha[] = [];
+    for (const [uid] of ativos) {
+      const alert: Alert = {
+        id: `alert:suspensao:${codigo}:${uid}`,
+        tipo: "SUSPENSÃO",
+        titulo: `Suspensão — pregão ${codigo}`,
+        mensagem: "A licitação foi suspensa e foi retirada do monitoramento.",
+        prioridade: "Média",
+        lido: false,
+        ref: codigo,
+        created_at: agora,
+      };
+      rows.push({ user_id: uid, collection: "alerts", id: alert.id, data: alert });
+      await sb.from("records").delete().eq("collection", "pregoes").eq("user_id", uid).eq("data->>codigo_compra", codigo);
+    }
+    if (rows.length) {
+      const { error } = await sb.from("records").upsert(rows);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, suspenso: true, synced: 0 });
+  }
+
   // Empresa de cada usuário (termos vigiados e configuração dos alertas).
   const empresas = new Map<string, Empresa>([[userId, empresa]]);
   const outros = ativos.map(([u]) => u).filter((u) => u !== userId);
@@ -173,6 +198,7 @@ async function processar(
       status: "Capturando",
       mensagens: (pregao.mensagens || 0) + fresh.length,
       ultima_captura: msgs.length ? now : pregao.ultima_captura,
+      situacao_monitoramento: msgs.length ? null : "Ainda está em fase de início",
     };
     rows.push({ user_id: userId, collection: "pregoes", id: pregao.id, data: updatedPregao });
   }

@@ -56,6 +56,8 @@ export type Pregao = {
   mensagens: number;
   ultima_captura: string | null;
   created_at: string;
+  /** Situação do monitoramento (ex.: "Ainda está em fase de início"). */
+  situacao_monitoramento?: string | null;
   /** Dados do órgão (consultados pela UASG no Compras.gov.br). */
   orgao?: string;
   municipio?: string;
