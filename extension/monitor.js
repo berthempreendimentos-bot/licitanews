@@ -16,8 +16,6 @@
   if (window.__PEPPA_MONITOR__) return;
   window.__PEPPA_MONITOR__ = true;
 
-  const PEPPA_SERVER = 'https://peppacorp-licita.vercel.app';
-
   var PAGE_SIZE_DEFAULT = 10;
   var HEARTBEAT_MS = 45000;
   var LIVE_REFRESH_MS = 30000;
@@ -669,8 +667,11 @@
   }
 
   function getConfig() {
-    return new Promise(resolve => {
-      chrome.storage.local.get('peppa_key', cfg => resolve({ peppa_server: PEPPA_SERVER, peppa_key: cfg.peppa_key }));
+    return new Promise(function (resolve) {
+      chrome.storage.local.get(['peppa_server', 'peppa_key'], function (cfg) {
+        var server = (cfg && cfg.peppa_server) ? String(cfg.peppa_server).trim().replace(/\/+$/, '') : 'http://localhost:3000';
+        resolve({ peppa_server: server, peppa_key: cfg && cfg.peppa_key });
+      });
     });
   }
 
@@ -692,7 +693,7 @@
     try {
       getConfig().then(boot);
       chrome.storage.onChanged.addListener(function (changes, area) {
-        if (!isContextValid() || area !== 'local' || !changes.peppa_key) return;
+        if (!isContextValid() || area !== 'local' || (!changes.peppa_server && !changes.peppa_key)) return;
         registered = false;
         getConfig().then(boot);
       });

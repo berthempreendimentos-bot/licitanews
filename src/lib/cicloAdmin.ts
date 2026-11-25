@@ -194,6 +194,17 @@ async function rodarFila() {
     if (!lote.length) return;
     set({ lote: estado.lote + 1 });
     await Promise.all(lote.map((c, i) => atualizar(c, Math.floor(i / ABAS_POR_JANELA))));
+
+    // Atualiza o horário de captura das compras processadas para que, ao voltarem para a fila, fiquem no fim
+    const agoraIso = new Date().toISOString();
+    for (const codigo of lote) {
+      const sit = estado.situacao[codigo];
+      if (sit?.estado === "concluido") {
+        const item = estado.compras.find((x) => x.codigo_compra === codigo);
+        if (item) item.ultima_captura = agoraIso;
+      }
+    }
+
     // Várias recusas no mesmo lote = sessão do gov.br expirada: abrir mais abas só piora.
     const recusadas = lote.filter((c) => estado.situacao[c]?.estado === "sem_acesso").length;
     if (recusadas >= RECUSAS_PARA_PAUSAR) {
@@ -204,57 +215,35 @@ async function rodarFila() {
 }
 
 /**
- * Constrói a fila de monitoramento com a seguinte prioridade:
- * 1. NOVAS compras (em `recentes`) → FRENTE da fila (prioridade máxima)
- * 2. ANTIGAS (não atualizadas recentemente, não em `recentes`) → MEIO da fila
- * 3. RECENTEMENTE ATUALIZADAS (com `ultima_captura` recente) → FINAL da fila
- * 
- * Isso garante que compras que acabaram de ser capturadas não sejam re-verificadas
- * imediatamente, dando chance para as outras serem processadas.
+ * Constrói a fila contínua de monitoramento:
+ * 1. NOVAS compras (em `recentes` ou nunca capturadas) → FRENTE da fila
+ * 2. Compras em monitoramento → ordenadas das mais antigas (meio) para as mais recentemente atualizadas (FIM da fila)
+ * Isso cria um loop contínuo onde quem acabou de atualizar aguarda o fim da fila para rodar de novo.
  */
 function construirFila(): string[] {
-  const agora = Date.now();
-  const RECENTEMENTE_ATUALIZADA_MS = 30 * 60 * 1000; // 30 minutos
-  
-  // Separa as compras ativas em três grupos
-  const novas = estado.recentes.filter((c) => ativas.has(c));
-  const demais = [...ativas].filter((c) => !estado.recentes.includes(c));
-  
-  // Busca ultima_captura de cada compra no estado.compras
   const capturaMap = new Map<string, string | null>();
   for (const c of estado.compras) {
     capturaMap.set(c.codigo_compra, c.ultima_captura);
   }
+
+  const ativasList = [...ativas];
+
+  // 1. NOVAS: em estado.recentes ou que nunca tiveram nenhuma captura (ultima_captura nula)
+  const novas = ativasList.filter((c) => estado.recentes.includes(c) || !capturaMap.get(c));
   
-  // Divide "demais" em antigas vs recentemente atualizadas
-  const antigas: string[] = [];
-  const recentementeAtualizadas: string[] = [];
-  
-  for (const codigo of demais) {
-    const ultima = capturaMap.get(codigo) ?? null;
-    if (ultima && (agora - new Date(ultima).getTime()) < RECENTEMENTE_ATUALIZADA_MS) {
-      recentementeAtualizadas.push(codigo);
-    } else {
-      antigas.push(codigo);
-    }
-  }
-  
-  // Ordena antigas pela mais antiga primeiro (menos atualizadas primeiro)
-  antigas.sort((a, b) => {
-    const ta = capturaMap.get(a) ?? "";
-    const tb = capturaMap.get(b) ?? "";
+  // 2. DEMAIS: já foram capturadas anteriormente
+  const comCaptura = ativasList.filter((c) => !novas.includes(c));
+
+  // Ordena comCaptura: as que têm a última captura mais antiga vêm primeiro,
+  // e as atualizadas mais recentemente vão para o FINAL DA FILA.
+  comCaptura.sort((a, b) => {
+    const ta = capturaMap.get(a) || "";
+    const tb = capturaMap.get(b) || "";
     return ta.localeCompare(tb);
   });
-  
-  // Ordena recentemente atualizadas pela mais recente primeiro
-  recentementeAtualizadas.sort((a, b) => {
-    const ta = capturaMap.get(a) ?? "";
-    const tb = capturaMap.get(b) ?? "";
-    return tb.localeCompare(ta); // mais recente primeiro no final
-  });
-  
-  // Ordem final: novas → antigas → recentemente atualizadas
-  return [...novas, ...antigas, ...recentementeAtualizadas];
+
+  // Fila: [NOVAS na frente] -> [Menos atualizadas no meio] -> [Mais recentemente atualizadas no final]
+  return [...novas, ...comCaptura];
 }
 
 export async function iniciar() {

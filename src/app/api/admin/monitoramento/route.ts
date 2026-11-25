@@ -45,6 +45,12 @@ export async function GET(req: Request) {
 
   const compras: CompraAdmin[] = [...porCodigo.values()]
     .map(({ donos, ...c }) => ({ ...c, usuarios: donos.size }))
-    .sort((a, b) => (a.ultima_captura ?? "").localeCompare(b.ultima_captura ?? ""));
+    .sort((a, b) => {
+      // 1. Novas (nunca capturadas) na frente
+      if (!a.ultima_captura && b.ultima_captura) return -1;
+      if (a.ultima_captura && !b.ultima_captura) return 1;
+      // 2. Das já capturadas, as mais antigas primeiro (as recentemente atualizadas vão para o fim)
+      return (a.ultima_captura ?? "").localeCompare(b.ultima_captura ?? "");
+    });
   return NextResponse.json({ compras });
 }

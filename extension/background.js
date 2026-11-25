@@ -4,10 +4,24 @@
 //  2. Se o servidor estiver em modo demonstração (503), entrega à aba do PEPPACORP aberta
 //     neste navegador (ponte), que grava nos dados locais com as mesmas regras.
 
-const PEPPA_SERVER = 'https://peppacorp-licita.vercel.app';
+const BRIDGE_HOSTS = /^(http:\/\/(localhost|127\.0\.0\.1|[^/]+\.localhost|192\.168\.18\.28)(:\d+)?|https:\/\/[^/]+\.vercel\.app)\//;
+let servidorOrigem = null;
+chrome.storage.local.get('peppa_server').then((c) => { if (c && c.peppa_server) servidorOrigem = originOf(c.peppa_server); });
+chrome.storage.onChanged.addListener((m, area) => { if (area === 'local' && m.peppa_server) servidorOrigem = originOf(m.peppa_server.newValue || ''); });
+const ehPeppacorp = (url) => !!url && (BRIDGE_HOSTS.test(url) || (!!servidorOrigem && originOf(url) === servidorOrigem));
 
-function getConfig() {
-  return chrome.storage.local.get('peppa_key').then(cfg => ({ peppa_server: PEPPA_SERVER, peppa_key: cfg.peppa_key }));
+async function getConfig() {
+  const cfg = await chrome.storage.local.get(['peppa_server', 'peppa_key']);
+  let server = (cfg && cfg.peppa_server) ? String(cfg.peppa_server).trim().replace(/\/+$/, '') : '';
+  if (!server) {
+    try {
+      const tabs = await chrome.tabs.query({});
+      const peppa = tabs.find((t) => ehPeppacorp(t.url));
+      if (peppa && peppa.url) server = originOf(peppa.url) || '';
+    } catch (e) {}
+  }
+  if (!server) server = 'http://localhost:3000';
+  return { peppa_server: server, peppa_key: cfg && cfg.peppa_key };
 }
 
 function originOf(url) {
@@ -25,14 +39,6 @@ async function viaServer(cfg, codigo, messages) {
   try { data = JSON.parse(text); } catch (e) { /* resposta não-JSON */ }
   return { status: r.status, data: data };
 }
-
-// Endereços onde a ponte (bridge.js) roda — mesma lista do manifesto.
-const BRIDGE_HOSTS = /^(http:\/\/(localhost|127\.0\.0\.1|[^/]+\.localhost|192\.168\.18\.28)(:\d+)?|https:\/\/[^/]+\.vercel\.app)\//;
-// Domínio próprio do PEPPACORP (ex.: licita.suaempresa.com.br), configurado no popup.
-let servidorOrigem = null;
-chrome.storage.local.get('peppa_key').then((c) => { servidorOrigem = originOf(PEPPA_SERVER); });
-chrome.storage.onChanged.addListener((m, area) => { if (area === 'local' && m.peppa_key) servidorOrigem = originOf(PEPPA_SERVER); });
-const ehPeppacorp = (url) => !!url && (BRIDGE_HOSTS.test(url) || (!!servidorOrigem && originOf(url) === servidorOrigem));
 
 /** Domínio fora do manifesto: registra a ponte nele (precisa da permissão concedida no popup). */
 async function registrarPonte(server) {
@@ -300,10 +306,14 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
       sendResponse({ ok: false, error: 'O token deve ter pelo menos 16 caracteres.' });
       return false;
     }
-    // Outra conta: os avisos recomeçam a partir de agora.
+    const server = req.server ? String(req.server).trim().replace(/\/+$/, '') : null;
+    const toSave = { peppa_key: key };
+    if (server) toSave.peppa_server = server;
+    // Outra conta/servidor: os avisos recomeçam a partir de agora.
     chrome.storage.local.remove('peppa_avisos_desde');
-    chrome.storage.local.set({ peppa_key: key }, () => {
-      registrarPonte(PEPPA_SERVER).catch(() => {}).finally(() => { sendResponse({ ok: true }); buscarAvisos().catch(() => {}); });
+    chrome.storage.local.set(toSave, () => {
+      const s = toSave.peppa_server || 'http://localhost:3000';
+      registrarPonte(s).catch(() => {}).finally(() => { sendResponse({ ok: true }); buscarAvisos().catch(() => {}); });
     });
     return true;
   }
