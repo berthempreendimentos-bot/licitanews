@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, Search, Radar, Star, KanbanSquare, CalendarDays, FilePlus2, Gavel,
   MessageSquareText, PlugZap, LineChart, ScrollText, FolderOpen, Bell, BarChart3, Settings, Menu, X,
-  PanelLeftClose, PanelLeftOpen, UsersRound,
+  PanelLeftClose, PanelLeftOpen, UsersRound, ShieldCheck,
 } from "lucide-react";
 import { AuthGate } from "./AuthGate";
 import { AlertasDocumentos } from "./AlertasDocumentos";
@@ -30,6 +30,7 @@ const NAV: NavItem[] = [
   { href: "/agenda", label: "Agenda", icon: CalendarDays },
   { href: "/propostas", label: "Propostas", icon: FilePlus2 },
   { href: "/monitoramento", label: "Monitoramento", icon: MessageSquareText },
+  { href: "/monitoramento/admin", label: "Ciclo Robô", icon: ShieldCheck, admin: true },
   { href: "/conectar-robo", label: "Conectar Monitor", icon: PlugZap },
   { href: "/inteligencia-mercado", label: "Inteligência de Mercado", icon: LineChart },
   { href: "/atas-registro-preco", label: "Atas de Registro", icon: ScrollText },

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { LogOut } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { encerrarSessao } from "@/lib/cicloAdmin";
 
 /** E-mail de quem está logado + botão Sair (só com Supabase; no modo demonstração não há login). */
 export function BotaoSair() {
@@ -22,6 +23,7 @@ export function BotaoSair() {
   async function sair() {
     if (!confirm("Sair do PEPPACORP?")) return;
     setSaindo(true);
+    encerrarSessao();
     await supabase!.auth.signOut(); // o AuthGate volta para a tela de login
   }
 

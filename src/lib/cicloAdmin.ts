@@ -283,10 +283,19 @@ function construirFila(): string[] {
 
 export async function iniciar() {
   if (estado.rodando) return;
+  try {
+    localStorage.setItem("peppa_ciclo_ativo", "1");
+  } catch {}
   set({ aviso: "" });
   const versao = await detectarExtensao(3000);
-  if (!versao) return set({ aviso: "Extensão PEPPACORP Monitor não encontrada neste navegador. Instale-a em Conectar Robô." });
-  if (!versaoMinima(versao, VERSAO_MINIMA)) return set({ aviso: `A extensão está na v${versao}. O ciclo precisa da v${VERSAO_MINIMA} ou mais nova: baixe de novo em Conectar Robô.` });
+  if (!versao) {
+    try { localStorage.removeItem("peppa_ciclo_ativo"); } catch {}
+    return set({ aviso: "Extensão PEPPACORP Monitor não encontrada neste navegador. Instale-a em Conectar Robô." });
+  }
+  if (!versaoMinima(versao, VERSAO_MINIMA)) {
+    try { localStorage.removeItem("peppa_ciclo_ativo"); } catch {}
+    return set({ aviso: `A extensão está na v${versao}. O ciclo precisa da v${VERSAO_MINIMA} ou mais nova: baixe de novo em Conectar Robô.` });
+  }
   parar = false;
   prioridade = [];
   set({ rodando: true, ciclo: 1, lote: 0 });
@@ -308,11 +317,18 @@ export async function iniciar() {
 
 export function pararCiclo() {
   parar = true;
+  try {
+    localStorage.removeItem("peppa_ciclo_ativo");
+  } catch {}
+  set({ rodando: false });
 }
 
 /** Ao sair da conta: para o ciclo e a vigia e esquece a lista. */
 export function encerrarSessao() {
   parar = true;
+  try {
+    localStorage.removeItem("peppa_ciclo_ativo");
+  } catch {}
   if (vigia) clearInterval(vigia);
   vigia = null;
   conhecidas = null;

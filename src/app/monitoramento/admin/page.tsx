@@ -42,7 +42,12 @@ function MonitoramentoAdmin() {
   // O ciclo roda em segundo plano (src/lib/cicloAdmin.ts): esta página só mostra e controla.
   const { compras, recentes, situacao, rodando, ciclo, lote, carregando, erro, aviso } = useCiclo();
 
-  useEffect(() => { void carregar(); }, []);
+  useEffect(() => {
+    void carregar();
+    if (typeof window !== "undefined" && localStorage.getItem("peppa_ciclo_ativo") === "1" && !rodando) {
+      void iniciar();
+    }
+  }, []);
 
   const valores = Object.values(situacao);
   const feitos = valores.filter((s) => !["fila", "abrindo", "capturando", "captcha"].includes(s.estado)).length;
