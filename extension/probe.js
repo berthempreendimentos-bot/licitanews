@@ -10,7 +10,10 @@
   var CHAT = 'comprasnet-mensagem/v2/chat/';
   var buffer = [];
 
-  function isChat(u) { return String(u || '').indexOf(CHAT) !== -1; }
+  function isChat(u) {
+    var s = String(u || '').toLowerCase();
+    return s.indexOf('comprasnet-mensagem') !== -1 || s.indexOf('chat') !== -1 || s.indexOf('mensagem') !== -1;
+  }
   // O parâmetro captcha é temporário e não interessa ao monitor: sai antes de repassar.
   function clean(u) { return String(u || '').replace(/([?&])captcha=[^&]*&?/i, '$1').replace(/[?&]$/, ''); }
 

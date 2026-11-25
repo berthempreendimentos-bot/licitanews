@@ -535,12 +535,123 @@
     }
   }
 
+  // ===== Extração direta do HTML (DOM) =====
+  // Se a requisição de rede não for interceptada pela sonda, lê as mensagens visíveis na tela.
+  function extrairMensagensDoDom() {
+    var painel = document.querySelector('app-mensagens-da-compra') ||
+                 document.querySelector('.dv-mensagens-disputa') ||
+                 document.querySelector('[class*="chat"]') ||
+                 document.querySelector('[class*="mensagem"]');
+
+    if (!painel) {
+      var tags = document.querySelectorAll('div, section, aside');
+      for (var i = 0; i < tags.length; i++) {
+        if ((tags[i].textContent || '').indexOf('Visualize aqui as mensagens') !== -1) {
+          painel = tags[i];
+          break;
+        }
+      }
+    }
+    if (!painel) return [];
+
+    var divs = painel.querySelectorAll('div, li, p');
+    var encontradas = [];
+    var vistos = {};
+
+    for (var j = 0; j < divs.length; j++) {
+      var el = divs[j];
+      var txt = (el.innerText || el.textContent || '').trim();
+      var matchData = txt.match(/(\d{2}\/\d{2}\/\d{4}(?:\s+\d{2}:\d{2}(?::\d{2})?)?)/);
+      if (!matchData) continue;
+
+      var temFilhoComData = false;
+      for (var k = 0; k < el.children.length; k++) {
+        if ((el.children[k].innerText || el.children[k].textContent || '').match(/\d{2}\/\d{2}\/\d{4}/)) {
+          temFilhoComData = true;
+          break;
+        }
+      }
+      if (temFilhoComData) continue;
+
+      var card = el.parentElement;
+      while (card && card !== painel && card.children.length <= 1) {
+        card = card.parentElement;
+      }
+      if (!card || card === painel) continue;
+
+      var cardTexto = (card.innerText || card.textContent || '').trim();
+      if (cardTexto.indexOf('Visualize aqui as mensagens') !== -1) continue;
+
+      var dataStr = matchData[1];
+      var partes = dataStr.split(/[\/\s:]/);
+      var dataHoraIso = null;
+      if (partes.length >= 3) {
+        var d = partes[0], m = partes[1], y = partes[2];
+        var hh = partes[3] || '00', mm = partes[4] || '00', ss = partes[5] || '00';
+        dataHoraIso = y + '-' + m + '-' + d + ' ' + hh + ':' + mm + ':' + ss;
+      }
+
+      var matchItem = cardTexto.match(/\bItem\s+(\d+)\b/i);
+      var item = matchItem ? matchItem[1] : null;
+
+      var remetente = "Sistema";
+      if (/Pregoeiro/i.test(cardTexto)) remetente = "Pregoeiro";
+      else if (/Fornecedor/i.test(cardTexto)) remetente = "Fornecedor";
+      else if (/Comiss/i.test(cardTexto)) remetente = "Comissão";
+
+      var textoLimpo = cardTexto
+        .replace(/Mensagem do (?:Pregoeiro|Sistema|Fornecedor|Comissão)/gi, '')
+        .replace(/\bItem\s+\d+\b/gi, '')
+        .replace(dataStr, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (textoLimpo.length < 3) continue;
+
+      var chave = 'dom_' + (dataHoraIso ? dataHoraIso.replace(/\D/g, '') : '') + '_' + (item || '0') + '_' + textoLimpo.slice(0, 15).replace(/\W/g, '');
+      if (vistos[chave]) continue;
+      vistos[chave] = true;
+
+      encontradas.push({
+        chaveMensagemNaOrigem: chave,
+        id: chave,
+        texto: textoLimpo,
+        mensagem: textoLimpo,
+        dataHora: dataHoraIso || dataStr,
+        tipoRemetente: remetente === 'Pregoeiro' ? '3' : (remetente === 'Fornecedor' ? '1' : '0'),
+        remetente: remetente,
+        identificadorItem: item,
+        item: item
+      });
+    }
+    return encontradas;
+  }
+
   // ===== Relógio principal =====
   function tick() {
     if (stopped || checkCaptcha()) return;
     if (!registered) return;
     reportar('registrado');
     if (!ensurePanel()) return;
+
+    // Se houver mensagens visíveis na tela, captura-as imediatamente
+    var domMsgs = extrairMensagensDoDom();
+    if (domMsgs.length > 0) {
+      var novosDoDom = [];
+      for (var dm = 0; dm < domMsgs.length; dm++) {
+        var dk = keyOf(domMsgs[dm]);
+        if (dk && !known[dk]) {
+          known[dk] = true;
+          novosDoDom.push(domMsgs[dm]);
+        }
+      }
+      if (novosDoDom.length > 0) {
+        if (seenPages[0] === undefined) seenPages[0] = domMsgs.length;
+        respostas++;
+        enqueue(novosDoDom);
+      }
+    }
+
     if (walk) { walkStep(); return; }
     if (rapido) { rapidoStep(); return; }
     if (!historyDone) {
