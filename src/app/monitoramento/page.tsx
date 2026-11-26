@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Plus, Trash2, X, Square, Play, ExternalLink, Building2, MapPin, BellRing, Search, ShieldCheck, Eye, Tag, Star } from "lucide-react";
 import { Empty, PageHeader, StatCard } from "@/components/ui";
@@ -651,9 +651,25 @@ export default function Monitoramento() {
   const [selected, setSelected] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [palavraFiltro, setPalavraFiltro] = useState<string>("");
+  const [showPalavras, setShowPalavras] = useState(false);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState("");
   const [toast, setToast] = useState("");
+  const palavrasRef = useRef<HTMLDivElement>(null);
+
+  // Fecha o dropdown de palavras-chave ao clicar fora
+  useEffect(() => {
+    if (!showPalavras) return;
+    const handleClick = (e: MouseEvent) => {
+      if (palavrasRef.current && !palavrasRef.current.contains(e.target as Node)) {
+        setShowPalavras(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showPalavras]);
+
   useDadosOrgao(pregoes);
 
   function toggleFavorita(pregao: Pregao) {
@@ -708,13 +724,38 @@ export default function Monitoramento() {
     alertas: pregoes.filter((p) => alertasNovos(p.codigo_compra) > 0).length,
     encerrados: pregoes.filter((p) => p.status === "Encerrado").length,
   };
+
+  // Palavras-chave com contagem de pregões onde apareceram (nas mensagens)
+  const palavrasChaveEmpresa = empresa.palavras_chave || [];
+  const palavrasPregaoCount = useMemo(() => {
+    const mapa = new Map<string, number>();
+    for (const kw of palavrasChaveEmpresa) {
+      let count = 0;
+      const kwLower = kw.toLowerCase();
+      for (const p of pregoes) {
+        const msgsDoPregao = msgs.filter((m) => m.codigo_compra === p.codigo_compra);
+        const encontrou = msgsDoPregao.some((m) => m.texto.toLowerCase().includes(kwLower));
+        if (encontrou) count++;
+      }
+      if (count > 0) mapa.set(kw, count);
+    }
+    return mapa;
+  }, [palavrasChaveEmpresa, pregoes, msgs]);
+
   const filtrados = pregoes
     .filter((p) => {
       if (filtro === "ativos" && p.status === "Encerrado") return false;
       if (filtro === "encerrados" && p.status !== "Encerrado") return false;
       if (filtro === "favoritas" && !p.favorita) return false;
       if (filtro === "alertas" && !alertasNovos(p.codigo_compra)) return false;
-      return combina(p, busca);
+      if (busca.trim() && !combina(p, busca)) return false;
+      if (palavraFiltro) {
+        const msgsDoPregao = msgs.filter((m) => m.codigo_compra === p.codigo_compra);
+        const palavraLower = palavraFiltro.toLowerCase();
+        const encontrou = msgsDoPregao.some((m) => m.texto.toLowerCase().includes(palavraLower));
+        if (!encontrou) return false;
+      }
+      return true;
     })
     .sort((a, b) => {
       // 1. Novas (nunca capturadas) na frente
@@ -829,6 +870,47 @@ export default function Monitoramento() {
                 {f.nome} ({contagem[f.id]})
               </button>
             ))}
+
+            {/* Filtro de Palavra-chave / Missão */}
+            {palavrasChaveEmpresa.length > 0 && (
+              <div ref={palavrasRef} className="relative">
+                <button onClick={() => setShowPalavras((s) => !s)} aria-pressed={palavraFiltro !== ""}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition inline-flex items-center gap-1.5 ${palavraFiltro ? "border-brand bg-brand text-white" : "border-border bg-surface text-muted hover:text-brand"}`}>
+                  <Tag size={12} />
+                  {palavraFiltro ? `Missão: "${palavraFiltro}"` : `Missões (${palavrasChaveEmpresa.length})`}
+                  {palavraFiltro && (
+                    <span className="ml-0.5 rounded-full bg-white/20 px-1.5 py-0.5 text-[10px]">
+                      {filtrados.filter(p => {
+                        const msgsDoPregao = msgs.filter(m => m.codigo_compra === p.codigo_compra);
+                        return msgsDoPregao.some(m => m.texto.toLowerCase().includes(palavraFiltro.toLowerCase()));
+                      }).length}
+                    </span>
+                  )}
+                </button>
+
+                {showPalavras && (
+                  <div className="absolute top-full left-0 mt-1 z-30 card p-1.5 min-w-[220px] max-h-[300px] overflow-y-auto shadow-xl">
+                    <button
+                      onClick={() => { setPalavraFiltro(""); setShowPalavras(false); }}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs font-medium transition ${palavraFiltro === "" ? "bg-accent-soft text-brand" : "text-muted hover:bg-bg hover:text-brand"}`}>
+                      Todas as missões
+                    </button>
+                    {[...palavrasPregaoCount.entries()].sort((a, b) => b[1] - a[1]).map(([kw, qtd]) => (
+                      <button
+                        key={kw}
+                        onClick={() => { setPalavraFiltro(kw); setShowPalavras(false); }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs font-medium transition flex items-center justify-between ${palavraFiltro === kw ? "bg-accent-soft text-brand" : "text-muted hover:bg-bg hover:text-brand"}`}>
+                        <span className="truncate mr-2">{kw}</span>
+                        <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full ${palavraFiltro === kw ? "bg-brand text-white" : "bg-border/60 text-muted"}`}>{qtd}</span>
+                      </button>
+                    ))}
+                    {palavrasPregaoCount.size === 0 && (
+                      <div className="px-2.5 py-3 text-xs text-muted text-center">Nenhuma missão com ocorrência ainda.</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -838,10 +920,13 @@ export default function Monitoramento() {
           {pregoes.length === 0 && <Empty title="Nenhum pregão monitorado" text="Cole acima o link de acompanhamento do Comprasnet ou o link do edital no PNCP." />}
           {pregoes.length > 0 && filtrados.length === 0 && (
             <Empty title="Nenhum pregão encontrado" text="Mude a pesquisa ou o filtro."
-              action={<button className="btn btn-ghost" onClick={() => { setBusca(""); setFiltro("todos"); }}>Limpar pesquisa</button>} />
+              action={<button className="btn btn-ghost" onClick={() => { setBusca(""); setFiltro("todos"); setPalavraFiltro(""); }}>Limpar pesquisa</button>} />
           )}
-          {(busca || filtro !== "todos") && filtrados.length > 0 && (
-            <div className="px-1 text-xs text-muted">{filtrados.length} de {pregoes.length} pregões</div>
+          {(busca || filtro !== "todos" || palavraFiltro) && filtrados.length > 0 && (
+            <div className="px-1 text-xs text-muted">
+              {filtrados.length} de {pregoes.length} pregões
+              {palavraFiltro && <span className="ml-1 text-accent font-semibold">• Missão: &ldquo;{palavraFiltro}&rdquo;</span>}
+            </div>
           )}
           {filtrados.map((p) => (
             <PregaoCard key={p.id} p={p} selected={current?.id === p.id} alertas={alertasNovos(p.codigo_compra)}

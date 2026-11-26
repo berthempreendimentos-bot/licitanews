@@ -1,9 +1,11 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { abrirNoComprasnet, detectarExtensao, escutarCaptura, fecharNoComprasnet, pedirEstadoCaptura } from "./extensao";
+import { abrirNoComprasnet, detectarExtensao, escutarCaptura, fecharNoComprasnet, pedirEstadoCaptura, verificarSeHaNovidade } from "./extensao";
 import { fetchAdmin } from "./useAdmin";
+import { serviceClient } from "./supabase";
 import type { CompraAdmin } from "@/app/api/admin/monitoramento/route";
+import type { Empresa } from "@/lib/types";
 
 /**
  * Robô do administrador: atualiza no Comprasnet as compras monitoradas por TODOS os usuários
@@ -17,7 +19,7 @@ import type { CompraAdmin } from "@/app/api/admin/monitoramento/route";
  * o Comprasnet recusa o acesso.
  */
 export const JANELAS = 2;
-export const ABAS_POR_JANELA = 2;
+export const ABAS_POR_JANELA = 3;
 /** Intervalo entre uma abertura e a próxima (espalha os captchas). */
 const ESPACO_ABERTURAS_MS = 4000;
 export const TAMANHO_LOTE = JANELAS * ABAS_POR_JANELA;
@@ -144,47 +146,6 @@ function abrirEmOrdem(codigo: string, janela: number) {
   return r;
 }
 
-/** Abre a compra na janela indicada, espera a extensão avisar que importou o chat e fecha a aba (se foi aberta aqui). */
-async function atualizar(codigo: string, janela: number) {
-  marcar(codigo, { estado: "abrindo" });
-  const inicioProcessamento = Date.now();
-  const fim: { s: Situacao | null; respondeu: boolean } = { s: null, respondeu: false };
-  // Escuta antes de abrir: o aviso pode chegar logo depois da abertura.
-  const pararDeEscutar = escutarCaptura(codigo, (e, synced) => {
-    fim.respondeu = true;
-    if (e === "captcha") marcar(codigo, { estado: "captcha", synced });
-    else if (e !== "registrado") fim.s = { estado: e, synced };
-  });
-  try {
-    const r = await abrirEmOrdem(codigo, janela);
-    if (!r.ok) {
-      const tempo = Date.now() - inicioProcessamento;
-      const historico = estado.tempos_ciclo?.[codigo] || [];
-      set({ tempos_ciclo: { ...estado.tempos_ciclo, [codigo]: [...historico.slice(-4), tempo] } });
-      return marcar(codigo, { estado: "erro", detalhe: "a extensão não abriu a compra" });
-    }
-    // Já estava aberta: os avisos dela já saíram, então pede o estado de novo.
-    if (r.jaAberta) pedirEstadoCaptura(codigo);
-    if (!fim.s) marcar(codigo, { estado: "capturando" });
-    const inicio = Date.now();
-    while (!fim.s && !parar && Date.now() - inicio < TEMPO_LIMITE_MS) {
-      // Portal não carregou a compra (ex.: deslogado): pula para a próxima.
-      if (!fim.respondeu && Date.now() - inicio > TEMPO_RESPOSTA_MS) {
-        fim.s = { estado: "sem_resposta", detalhe: "o Comprasnet não carregou a compra (confira se está logado)" };
-        break;
-      }
-      await esperar(1000);
-    }
-    marcar(codigo, fim.s ?? { estado: parar ? "parado" : "tempo" });
-    const tempo = Date.now() - inicioProcessamento;
-    const historico = estado.tempos_ciclo?.[codigo] || [];
-    set({ tempos_ciclo: { ...estado.tempos_ciclo, [codigo]: [...historico.slice(-4), tempo] } });
-    if (!r.jaAberta) await fecharNoComprasnet(codigo);
-  } finally {
-    pararDeEscutar();
-  }
-}
-
 /** Próxima compra da fila: primeiro as novas, depois as demais (pula as que saíram do monitoramento). */
 function proxima(): string | null {
   while (prioridade.length || fila.length) {
@@ -196,8 +157,10 @@ function proxima(): string | null {
 }
 
 /**
- * Lotes de JANELAS janelas × ABAS_POR_JANELA abas. O próximo lote só abre quando todas as compras
- * do lote atual terminaram (cada aba fecha ao terminar; a janela some com a última aba).
+ * Lotes de JANELAS janelas × ABAS_POR_JANELA abas. Ao iniciar cada lote,
+ * abre todas as páginas do Comprasnet de uma vez (espaçadas de 4s),
+ * processa as capturas conforme terminam e fecha cada aba individualmente.
+ * Ao parar o ciclo, todas as páginas abertas são fechadas automaticamente.
  */
 async function rodarFila() {
   let processadasNoCiclo = 0;
@@ -217,7 +180,17 @@ async function rodarFila() {
     }
 
     set({ lote: estado.lote + 1 });
-    await Promise.all(lote.map((c, i) => atualizar(c, Math.floor(i / ABAS_POR_JANELA))));
+
+    // Abre todas as páginas do lote de uma vez (espaçadas por abrirEmOrdem).
+    for (let i = 0; i < lote.length; i++) {
+      const codigo = lote[i];
+      const janela = Math.floor(i / ABAS_POR_JANELA);
+      const capturePromise = abrirCaptura(codigo, janela);
+      capturesAtivas.set(codigo, capturePromise);
+    }
+
+    // Aguarda todas as capturas do lote completarem.
+    await Promise.all(lote.map((c) => capturesAtivas.get(c)!));
 
     // Atualiza o horário de captura das compras processadas
     const agoraIso = new Date().toISOString();
@@ -257,6 +230,120 @@ async function rodarFila() {
       set({ aviso: "O Comprasnet recusou o acesso (sessão expirada ou verificação). Entre de novo no Comprasnet neste navegador e clique em Iniciar ciclo." });
     }
   }
+}
+
+/**
+ * Mapa de capturas ativas do lote atual. Usado para fechar todas as páginas
+ * do Comprasnet quando o ciclo é parado.
+ */
+const capturesAtivas = new Map<string, Promise<void>>();
+
+/**
+ * Abre a página da compra e aguarda a extensão avisar que a captura terminou.
+ * Registra a promise no mapa de capturas ativas.
+ */
+async function abrirCaptura(codigo: string, janela: number): Promise<void> {
+  marcar(codigo, { estado: "abrindo" });
+
+  // Sync incremental: verifica se há mensagens novas ANTES de abrir o browser.
+  const pregaoAtual = estado.compras.find((c) => c.codigo_compra === codigo);
+  const since = pregaoAtual?.ultima_captura ? String(pregaoAtual.ultima_captura) : null;
+
+  if (since) {
+    try {
+      const sb = serviceClient();
+      if (!sb) throw new Error("no_supabase");
+      const { data: session } = await sb.auth.getSession();
+      const uid = session?.session?.user?.id;
+      if (uid) {
+        const { data: empRow } = await sb
+          .from("records")
+          .select("data")
+          .eq("user_id", uid)
+          .eq("collection", "empresa")
+          .maybeSingle();
+        const ingestKey = empRow?.data?.ingest_key as string | undefined;
+        if (ingestKey) {
+          const temNovidade = await verificarSeHaNovidade(codigo, since, ingestKey);
+          if (!temNovidade) {
+            console.log(`[ciclo] SKIP sync-incremental compra=${codigo} since=${since} → sem novidades`);
+            const tempo = Date.now();
+            const historico = estado.tempos_ciclo?.[codigo] || [];
+            set({ tempos_ciclo: { ...estado.tempos_ciclo, [codigo]: [...historico.slice(-4), 0] } });
+            marcar(codigo, { estado: "concluido", synced: 0, detalhe: "sem novidades" });
+            return;
+          }
+          console.log(`[ciclo] SYNC-INCREMENTAL: há novidade compra=${codigo} since=${since} → abre browser`);
+        } else {
+          console.log(`[ciclo] SEM INGEST-KEY user=${uid} → abre browser sem verificação`);
+        }
+      }
+    } catch (e) {
+      console.log(`[ciclo] FALHA sync check compra=${codigo}: ${(e as Error).message} → abre browser`);
+    }
+  } else {
+    console.log(`[ciclo] compra=${codigo} sem captura anterior (primeira vez) → abre browser`);
+  }
+
+  const inicioProcessamento = Date.now();
+  const fim: { s: Situacao | null; respondeu: boolean } = { s: null, respondeu: false };
+
+  const pararDeEscutar = escutarCaptura(codigo, (e, synced) => {
+    fim.respondeu = true;
+    if (e === "captcha") marcar(codigo, { estado: "captcha", synced });
+    else if (e !== "registrado") fim.s = { estado: e, synced };
+  });
+
+  try {
+    const r = await abrirEmOrdem(codigo, janela);
+    if (!r.ok) {
+      const tempo = Date.now() - inicioProcessamento;
+      const historico = estado.tempos_ciclo?.[codigo] || [];
+      set({ tempos_ciclo: { ...estado.tempos_ciclo, [codigo]: [...historico.slice(-4), tempo] } });
+      marcar(codigo, { estado: "erro", detalhe: "a extensão não abriu a compra" });
+      return;
+    }
+    if (r.jaAberta) pedirEstadoCaptura(codigo);
+    if (!fim.s) marcar(codigo, { estado: "capturando" });
+
+    const inicio = Date.now();
+    while (!fim.s && !parar && Date.now() - inicio < TEMPO_LIMITE_MS) {
+      if (!fim.respondeu && Date.now() - inicio > TEMPO_RESPOSTA_MS) {
+        fim.s = { estado: "sem_resposta", detalhe: "o Comprasnet não carregou a compra (confira se está logado)" };
+        break;
+      }
+      await esperar(1000);
+    }
+    marcar(codigo, fim.s ?? { estado: parar ? "parado" : "tempo" });
+    const tempo = Date.now() - inicioProcessamento;
+    const historico = estado.tempos_ciclo?.[codigo] || [];
+    set({ tempos_ciclo: { ...estado.tempos_ciclo, [codigo]: [...historico.slice(-4), tempo] } });
+    if (!r.jaAberta) await fecharNoComprasnet(codigo);
+  } finally {
+    pararDeEscutar();
+  }
+}
+
+/**
+ * Fecha todas as páginas do Comprasnet abertas no lote atual.
+ * Chamado quando o ciclo é parado.
+ */
+async function closeLoteAtual() {
+  const closes = [...capturesAtivas.entries()].map(async ([codigo, promise]) => {
+    try {
+      // Aguarda até 3s pela captura terminar naturalmente; senão, força fechamento.
+      await Promise.race([promise, esperar(3000)]);
+    } catch {
+      // Timeout ou erro: força fechar a aba.
+    }
+    try {
+      await fecharNoComprasnet(codigo);
+    } catch {
+      // Ignora erro de fechamento (aba pode já estar fechada).
+    }
+  });
+  capturesAtivas.clear();
+  await Promise.allSettled(closes);
 }
 
 /**
@@ -332,6 +419,10 @@ export async function iniciar() {
 
 export function pararCiclo() {
   parar = true;
+
+  // Fecha todas as páginas do Comprasnet abertas pelo ciclo.
+  closeLoteAtual();
+
   try {
     localStorage.removeItem("peppa_ciclo_ativo");
   } catch {}

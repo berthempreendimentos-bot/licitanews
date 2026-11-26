@@ -78,6 +78,41 @@ export function fecharNoComprasnet(codigo: string): Promise<boolean> {
 
 export type EstadoCaptura = "registrado" | "captcha" | "concluido" | "incompleto" | "encerrado" | "nao_monitorada" | "sem_chat" | "sem_acesso";
 
+/**
+ * Verifica se há mensagens novas no Comprasnet para a compra, SEM abrir o browser.
+ * Usa o endpoint leve /api/monitoramento/check que consulta apenas o último
+ * ID de mensagem conhecido no banco.
+ *
+ * @param codigo Código da compra
+ * @param since ID da última mensagem capturada (null = primeira captura)
+ * @param ingestKey Chave de ingestão da empresa
+ * @returns true se há novidade (vale a pena abrir o browser)
+ */
+export async function verificarSeHaNovidade(codigo: string, since: string | null, ingestKey: string): Promise<boolean> {
+  try {
+    const params = new URLSearchParams({ codigo_compra: codigo });
+    if (since) params.set("since", since);
+    const r = await fetch(`/api/monitoramento/check?${params}`, {
+      headers: { "x-ingest-key": ingestKey },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!r.ok) {
+      console.log(`[ingest-check] ERRO HTTP ${r.status} para compra=${codigo} → fallback (abre browser)`);
+      return true;
+    }
+    const data = (await r.json()) as { monitored?: boolean; has_new?: boolean };
+    if (data.monitored === false) {
+      console.log(`[ingest-check] compra=${codigo} não monitorada → skip`);
+      return false;
+    }
+    console.log(`[ingest-check] compra=${codigo} since=${since ?? "(nenhum)"} has_new=${data.has_new}`);
+    return data.has_new === true;
+  } catch (e) {
+    console.log(`[ingest-check] FALHA compra=${codigo}: ${(e as Error).message} → fallback (abre browser)`);
+    return true;
+  }
+}
+
 /** Pede à aba já aberta da compra que avise de novo o estado da captura (extensão v0.6.0+). */
 export function pedirEstadoCaptura(codigo: string) {
   window.postMessage({ type: "PEPPA_EXT_CAPTURE_RESET", codigo_compra: codigo }, window.location.origin);
