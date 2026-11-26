@@ -116,6 +116,15 @@ function DocForm({ doc, pastaInicial, onClose, onVer }: {
 /** Filtro da lista: todas, sem pasta ou o id de uma pasta. */
 type FiltroPasta = "todas" | "sem" | string;
 
+function nomeCompletoPasta(id: string, pastas: PastaDocumentos[]): string {
+  const p = pastas.find((x) => x.id === id);
+  if (!p) return "";
+  if (p.parent_id) {
+    const r = pastas.find((x) => x.id === p.parent_id);
+    return `${r?.nome ?? ""} / ${p.nome}`;
+  }
+  return p.nome;
+}
 function BarraPastas({ pastas, docs, filtro, setFiltro }: {
   pastas: PastaDocumentos[]; docs: DocumentoEmpresa[]; filtro: FiltroPasta; setFiltro: (f: FiltroPasta) => void;
 }) {
@@ -163,10 +172,9 @@ function BarraPastas({ pastas, docs, filtro, setFiltro }: {
                     <div className="absolute right-0 z-10 mt-1 flex flex-col gap-1 rounded-lg border border-border bg-white p-1 shadow">
                       <button className="btn btn-ghost !py-1 !text-xs whitespace-nowrap" onClick={() => {
                         const ids = new Set([p.id, ...pastas.filter((s) => s.parent_id === p.id).map((s) => s.id)]);
-                        const selecionados = docs.filter((d) => d.pasta_id && ids.has(d.pasta_id)).map((d) => {
-                          const sub = pastas.find((s) => s.id === d.pasta_id);
-                          return { ...d, subpasta: sub && sub.parent_id === p.id ? sub.nome : null };
-                        });
+                          const selecionados = docs.filter((d) => d.pasta_id && ids.has(d.pasta_id)).map((d) => {
+                            return { ...d, subpasta: nomeCompletoPasta(d.pasta_id, pastas) || null };
+                          });
                         baixarPastaZip(p.nome, selecionados, () => {}).catch((e) => alert(`Falha: ${(e as Error).message}`));
                         setMenuAberto(null);
                       }}>Baixar pasta</button>
@@ -293,7 +301,7 @@ function Certidoes() {
                   return (
                     <tr key={d.id} onClick={() => setEdit(d)} className="cursor-pointer border-b border-border last:border-0 hover:bg-bg">
                       <td className="px-4 py-2.5"><div className="font-medium">{d.tipo}</div>{d.descricao && <div className="text-[11px] text-muted">{d.descricao}</div>}
-                        {!pasta && d.pasta_id && ids.has(d.pasta_id) && <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted"><Folder size={11} /> {pastas.find((p) => p.id === d.pasta_id)?.nome}</div>}</td>
+                        {!pasta && d.pasta_id && ids.has(d.pasta_id) && <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted"><Folder size={11} /> {nomeCompletoPasta(d.pasta_id, pastas)}</div>}</td>
                       <td className="px-4 py-2.5 text-muted">{d.numero || "—"}</td>
                       <td className="px-4 py-2.5 whitespace-nowrap">{dataBR(d.emissao ? `${d.emissao}T12:00:00` : null)}</td>
                       <td className="px-4 py-2.5 whitespace-nowrap">{dataBR(d.validade ? `${d.validade}T12:00:00` : null)}</td>
