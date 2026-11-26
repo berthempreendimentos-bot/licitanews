@@ -61,18 +61,24 @@ function DocForm({ doc, pastaInicial, onClose, onVer }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
-      <form className="card w-full max-w-lg space-y-3 p-5" onClick={(e) => e.stopPropagation()} onSubmit={salvar}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4" onClick={onClose}>
+      <form className="card my-4 w-full max-w-lg space-y-3 p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} onSubmit={salvar}>
         <div className="flex items-center justify-between">
           <h2 className="font-bold text-brand">{doc ? "Editar documento" : "Novo documento"}</h2>
           <button type="button" onClick={onClose} aria-label="Fechar"><X size={18} /></button>
         </div>
-        <label className="block text-xs font-semibold text-muted">Pasta
-          <select className="input mt-1" value={f.pasta_id ?? ""} onChange={(e) => set("pasta_id", e.target.value || null)}>
-            <option value="">Sem pasta</option>
-            {[...pastas].sort((a, b) => a.nome.localeCompare(b.nome)).map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
-          </select>
-        </label>
+        <div className="text-xs font-semibold text-muted">Pasta
+          <div className="input mt-1">{(() => {
+            if (!f.pasta_id) return "Sem pasta";
+            const p = pastas.find((x) => x.id === f.pasta_id);
+            if (!p) return "Sem pasta";
+            if (p.parent_id) {
+              const r = pastas.find((x) => x.id === p.parent_id);
+              return `${r?.nome ?? ""} / ${p.nome}`;
+            }
+            return p.nome;
+          })()}</div>
+        </div>
         <select className="input" value={f.tipo} onChange={(e) => set("tipo", e.target.value)}>
           {TIPOS_DOCUMENTO.map((t) => <option key={t}>{t}</option>)}
         </select>
@@ -113,26 +119,88 @@ type FiltroPasta = "todas" | "sem" | string;
 function BarraPastas({ pastas, docs, filtro, setFiltro }: {
   pastas: PastaDocumentos[]; docs: DocumentoEmpresa[]; filtro: FiltroPasta; setFiltro: (f: FiltroPasta) => void;
 }) {
+  const [expandidas, setExpandidas] = useState<Set<string>>(new Set());
+  const [menuAberto, setMenuAberto] = useState<string | null>(null);
   const ids = new Set(pastas.map((p) => p.id));
-  // Documento de pasta excluída conta como "sem pasta".
   const semPasta = docs.filter((d) => !d.pasta_id || !ids.has(d.pasta_id)).length;
-  const chip = (k: FiltroPasta, label: string, n: number) => (
+  const toggle = (id: string) => setExpandidas((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const chip = (k: FiltroPasta, label: string, n: number, sub = false) => (
     <button key={k} onClick={() => setFiltro(k)}
-      className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold ${filtro === k ? "bg-black text-white" : "border border-border text-muted hover:text-black"}`}>
-      {k !== "todas" && k !== "sem" && <Folder size={14} />}{label}
+      className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold ${sub ? "ml-4" : ""} ${filtro === k ? "bg-black text-white" : "border border-border text-muted hover:text-black"}`}>
+      {sub && <Folder size={12} />}{label}
       <span className={`text-[11px] ${filtro === k ? "text-white/70" : "text-muted"}`}>{n}</span>
     </button>
   );
+  const raizDoFiltro = (() => {
+    const p = pastas.find((x) => x.id === filtro);
+    if (!p) return null;
+    return p.parent_id ?? p.id;
+  })();
+  const expandidaUnica = [...expandidas].find((id) => pastas.some((p) => p.id === id && !p.parent_id));
+  const raizes = [...pastas].filter((p) => !p.parent_id && (
+    raizDoFiltro ? p.id === raizDoFiltro : (expandidaUnica ? p.id === expandidaUnica : true)
+  )).sort((a, b) => a.nome.localeCompare(b.nome));
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2">
       {chip("todas", "Todas", docs.length)}
-      {[...pastas].sort((a, b) => a.nome.localeCompare(b.nome)).map((p) => chip(p.id, p.nome, docs.filter((d) => d.pasta_id === p.id).length))}
+      {raizes.map((p) => {
+        const subs = [...pastas].filter((s) => s.parent_id === p.id).sort((a, b) => a.nome.localeCompare(b.nome));
+        const aberta = expandidas.has(p.id);
+        return (
+          <span key={p.id} className="inline-flex flex-col gap-1">
+            <button onClick={() => toggle(p.id)} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold ${filtro === p.id ? "bg-black text-white" : "border border-border text-muted hover:text-black"}`}>
+              <Folder size={14} />
+              <span onClick={(e) => { e.stopPropagation(); setFiltro(p.id); }} className="cursor-pointer">{p.nome}</span>
+              <span className="text-[11px]">{aberta ? "▾" : "▸"}</span>
+              <span className={`text-[11px] ${filtro === p.id ? "text-white/70" : "text-muted"}`}>{docs.filter((d) => d.pasta_id === p.id).length}</span>
+            </button>
+            {aberta && (
+              <div className="flex flex-wrap gap-1 pl-2">
+                {subs.map((s) => chip(s.id, s.nome, docs.filter((d) => d.pasta_id === s.id).length, true))}
+                <div className="relative">
+                  <button className="btn btn-ghost !py-1 !text-xs" onClick={() => setMenuAberto(menuAberto === p.id ? null : p.id)}>⋯</button>
+                  {menuAberto === p.id && (
+                    <div className="absolute right-0 z-10 mt-1 flex flex-col gap-1 rounded-lg border border-border bg-white p-1 shadow">
+                      <button className="btn btn-ghost !py-1 !text-xs whitespace-nowrap" onClick={() => {
+                        const ids = new Set([p.id, ...pastas.filter((s) => s.parent_id === p.id).map((s) => s.id)]);
+                        const selecionados = docs.filter((d) => d.pasta_id && ids.has(d.pasta_id)).map((d) => {
+                          const sub = pastas.find((s) => s.id === d.pasta_id);
+                          return { ...d, subpasta: sub && sub.parent_id === p.id ? sub.nome : null };
+                        });
+                        baixarPastaZip(p.nome, selecionados, () => {}).catch((e) => alert(`Falha: ${(e as Error).message}`));
+                        setMenuAberto(null);
+                      }}>Baixar pasta</button>
+                      <button className="btn btn-ghost !py-1 !text-xs whitespace-nowrap" onClick={() => {
+                        const nome = prompt("Nome da subpasta")?.trim();
+                        if (!nome) return;
+                        db.upsert("pastas", { id: newId(), nome, parent_id: p.id, created_at: nowIso() });
+                        setMenuAberto(null);
+                      }}>+ Nova subpasta</button>
+                      <button className="btn btn-ghost !py-1 !text-xs whitespace-nowrap" onClick={() => {
+                        if (!confirm(`Excluir a pasta "${p.nome}" e todo o seu conteúdo (subpastas e documentos)?`)) return;
+                        const ids = new Set([p.id, ...pastas.filter((s) => s.parent_id === p.id).map((s) => s.id)]);
+                        docs.filter((d) => d.pasta_id && ids.has(d.pasta_id)).forEach((d) => { if (d.arquivo) void removerPdf(d.arquivo.path); db.remove("documentos", d.id); });
+                        [...pastas].filter((s) => s.parent_id === p.id).forEach((s) => db.remove("pastas", s.id));
+                        db.remove("pastas", p.id);
+                        setFiltro("todas");
+                        setMenuAberto(null);
+                      }}>Excluir pasta</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </span>
+        );
+      })}
       {semPasta > 0 && pastas.length > 0 && chip("sem", "Sem pasta", semPasta)}
       <button className="btn btn-ghost !py-1.5" onClick={() => {
         const nome = prompt("Nome da nova pasta (ex.: Habilitação 2026, Pregão 12/2026)")?.trim();
         if (!nome) return;
-        const p: PastaDocumentos = { id: newId(), nome, created_at: nowIso() };
+        const p: PastaDocumentos = { id: newId(), nome, parent_id: null, created_at: nowIso() };
         db.upsert("pastas", p);
+        const subpastas = ["Atestados", "Financeira", "Fiscal", "Jurídica", "RATE e PAT", "Proposta", "Declaração e variados"];
+        for (const s of subpastas) db.upsert("pastas", { id: newId(), nome: s, parent_id: p.id, created_at: nowIso() });
         setFiltro(p.id);
       }}><FolderPlus size={14} /> Nova pasta</button>
     </div>
@@ -386,7 +454,7 @@ function DocumentosInner() {
   return (
     <>
       <PageHeader title="Documentos" subtitle="Certidões da empresa e análise de editais com IA" />
-      <div className="card mb-5 flex flex-wrap gap-1 p-1.5">
+        <div className="card mb-5 flex flex-wrap gap-1 overflow-x-auto p-1.5">
         {tabs.map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold ${tab === k ? "bg-black text-white" : "text-muted hover:bg-bg hover:text-black"}`}>{l}</button>
         ))}

@@ -33,7 +33,7 @@ function nomeArquivo(s: string) {
   return s.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 120) || "documento";
 }
 
-type DocParaZip = { tipo: string; descricao: string; numero: string; validade: string | null; link: string; arquivo?: ArquivoDoc };
+type DocParaZip = { tipo: string; descricao: string; numero: string; validade: string | null; link: string; arquivo?: ArquivoDoc; subpasta?: string | null };
 
 /**
  * Baixa todos os PDFs de uma pasta num .zip (montado no navegador) com um índice.txt
@@ -48,9 +48,12 @@ export async function baixarPastaZip(nomePasta: string, docs: DocParaZip[], onPr
   let feitos = 0;
   onProgresso?.(0, comPdf.length);
   for (const d of comPdf) {
-    const base = nomeArquivo(d.descricao ? `${d.tipo} - ${d.descricao}` : d.tipo);
-    let nome = `${base}.pdf`;
-    for (let i = 2; usados.has(nome.toLowerCase()); i++) nome = `${base} (${i}).pdf`;
+    const pastaPrefix = d.subpasta ? `${nomeArquivo(d.subpasta)}/` : "";
+    const baseNome = d.descricao ? `${d.tipo} - ${d.descricao}` : d.tipo;
+    const sufixo = d.validade ? ` - val ${d.validade.split("-").reverse().join(".")}` : "";
+    const base = nomeArquivo(`${baseNome}${sufixo}`);
+    let nome = `${pastaPrefix}${base}.pdf`;
+    for (let i = 2; usados.has(nome.toLowerCase()); i++) nome = `${pastaPrefix}${base} (${i}).pdf`;
     try {
       const { url } = await fetchComLogin(`/api/documentos/arquivo?path=${encodeURIComponent(d.arquivo!.path)}`);
       const r = await fetch(url);

@@ -179,6 +179,7 @@ export type DocumentoEmpresa = {
 export type PastaDocumentos = {
   id: string;
   nome: string;
+  parent_id?: string | null;
   created_at: string;
 };
 
