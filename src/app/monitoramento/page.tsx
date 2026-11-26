@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Plus, Trash2, X, Square, Play, ExternalLink, Building2, MapPin, BellRing, Search, ShieldCheck, Eye } from "lucide-react";
+import { Plus, Trash2, X, Square, Play, ExternalLink, Building2, MapPin, BellRing, Search, ShieldCheck, Eye, Tag } from "lucide-react";
 import { Empty, PageHeader, StatCard } from "@/components/ui";
 import { corEvento, EventoTag } from "@/components/EventoTag";
 import { db, newId, useCollection, useEmpresa } from "@/lib/store";
-import { alertaCorrespondeConfig, alertasDaEmpresa, codigoCompraFromLink, comprasnetUrl, itemDoTexto, orgaoPregao, parseCodigoCompra, pncpFromLink, rotuloRemetente, tituloPregao } from "@/lib/monitor";
+import { alertaCorrespondeConfig, alertasDaEmpresa, codigoCompraFromLink, comprasnetUrl, itemDoTexto, orgaoPregao, parseCodigoCompra, pncpFromLink, rotuloRemetente, tituloPregao, findMention, watchTerms } from "@/lib/monitor";
 import { rotuloSituacaoMonitoramento } from "@/lib/monitor";
 import { abrirNoComprasnet } from "@/lib/extensao";
 import { supabase } from "@/lib/supabase";
@@ -420,13 +420,75 @@ function paraExibir(m: ChatMessage): ChatMessage & { geral: boolean } {
 }
 
 function ChatPainel({ pregao, msgs: salvas, carregando }: { pregao: Pregao; msgs: ChatMessage[]; carregando?: boolean }) {
+  const { empresa } = useEmpresa();
+  const termos = watchTerms(empresa);
+
   const [itens, setItens] = useState<Set<string>>(new Set());
-  const msgs = salvas.map(paraExibir);
+  const [eventoFiltro, setEventoFiltro] = useState<string>("todos");
+  const [mencaoFiltro, setMencaoFiltro] = useState<string>("todos");
+  const [busca, setBusca] = useState<string>("");
+
+  const msgs = salvas.map((m) => {
+    const exib = paraExibir(m);
+    const termo = findMention(exib.texto, termos);
+    return { ...exib, mencaoTermo: termo };
+  });
+
   const ordenadas = [...msgs].sort((a, b) => quando(b).localeCompare(quando(a)));
-  const contagem = new Map<string, number>();
-  for (const m of ordenadas) { const k = m.item ?? "geral"; contagem.set(k, (contagem.get(k) ?? 0) + 1); }
-  const chips = [...contagem.keys()].filter((k) => k !== "geral").sort((a, b) => Number(a) - Number(b));
-  const visiveis = itens.size ? ordenadas.filter((m) => itens.has(m.item ?? "geral")) : ordenadas;
+
+  // Contagem de itens
+  const contagemItens = new Map<string, number>();
+  for (const m of ordenadas) {
+    const k = m.item ?? "geral";
+    contagemItens.set(k, (contagemItens.get(k) ?? 0) + 1);
+  }
+  const chips = [...contagemItens.keys()].filter((k) => k !== "geral").sort((a, b) => Number(a) - Number(b));
+
+  // Contagem de eventos / tipos de alarme presentes neste pregão
+  const eventosMapa = new Map<string, number>();
+  for (const m of ordenadas) {
+    if (m.evento) eventosMapa.set(m.evento, (eventosMapa.get(m.evento) ?? 0) + 1);
+  }
+  const eventosDisponiveis = Array.from(eventosMapa.entries()).sort((a, b) => b[1] - a[1]);
+
+  // Contagem de menções aos termos da empresa presentes neste pregão
+  const mencoesMapa = new Map<string, number>();
+  for (const m of ordenadas) {
+    if (m.mencaoTermo) mencoesMapa.set(m.mencaoTermo, (mencoesMapa.get(m.mencaoTermo) ?? 0) + 1);
+  }
+  const mencoesDisponiveis = Array.from(mencoesMapa.entries()).sort((a, b) => b[1] - a[1]);
+
+  // Aplica os filtros
+  const buscaLimpa = busca.trim().toLowerCase();
+  const visiveis = ordenadas.filter((m) => {
+    // 1. Filtro por item
+    if (itens.size > 0 && !itens.has(m.item ?? "geral")) return false;
+
+    // 2. Filtro por tipo de alarme/evento
+    if (eventoFiltro !== "todos") {
+      if (eventoFiltro === "mencao") {
+        if (!m.mencaoTermo) return false;
+      } else if (m.evento !== eventoFiltro) {
+        return false;
+      }
+    }
+
+    // 3. Filtro por nome da menção
+    if (mencaoFiltro !== "todos") {
+      if (!m.mencaoTermo || m.mencaoTermo.toLowerCase() !== mencaoFiltro.toLowerCase()) {
+        return false;
+      }
+    }
+
+    // 4. Busca de texto
+    if (buscaLimpa) {
+      const texto = `${m.texto} ${m.remetente} ${m.item ?? ""}`.toLowerCase();
+      if (!texto.includes(buscaLimpa)) return false;
+    }
+
+    return true;
+  });
+
   const alternar = (k: string) => setItens((cur) => { const n = new Set(cur); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const chip = (ativo: boolean) => `rounded-full border px-2.5 py-1 text-xs font-semibold transition ${ativo ? "border-brand bg-brand text-white" : "border-border bg-surface text-muted hover:text-brand"}`;
 
@@ -443,18 +505,78 @@ function ChatPainel({ pregao, msgs: salvas, carregando }: { pregao: Pregao; msgs
       </div>
 
       {msgs.length > 0 && (
-        <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por item">
-          <button className={chip(itens.size === 0)} onClick={() => setItens(new Set())}>Todas ({msgs.length})</button>
-          {chips.map((k) => (
-            <button key={k} className={chip(itens.has(k))} aria-pressed={itens.has(k)} onClick={() => alternar(k)}>
-              Item {k} ({contagem.get(k)})
-            </button>
-          ))}
-          {contagem.has("geral") && chips.length > 0 && (
-            <button className={chip(itens.has("geral"))} aria-pressed={itens.has("geral")} onClick={() => alternar("geral")}>
-              Gerais ({contagem.get("geral")})
-            </button>
-          )}
+        <div className="mb-3 space-y-2 rounded-lg bg-bg p-2.5 text-xs">
+          {/* Linha com filtros de evento, menção e busca rápida */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="relative">
+              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+              <input
+                className="input !py-1 !pl-7 !text-xs"
+                placeholder="Buscar no chat..."
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+              />
+              {busca && (
+                <button onClick={() => setBusca("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-brand">
+                  <X size={11} />
+                </button>
+              )}
+            </div>
+
+            <select
+              className="input !py-1 !text-xs cursor-pointer font-medium"
+              value={eventoFiltro}
+              onChange={(e) => setEventoFiltro(e.target.value)}
+              aria-label="Filtrar por tipo de alarme/evento"
+            >
+              <option value="todos">Todos os tipos de alarme ({msgs.length})</option>
+              {mencoesDisponiveis.length > 0 && (
+                <option value="mencao">Menções à empresa ({mencoesDisponiveis.reduce((s, [, q]) => s + q, 0)})</option>
+              )}
+              {eventosDisponiveis.map(([ev, qtd]) => (
+                <option key={ev} value={ev}>{ev} ({qtd})</option>
+              ))}
+            </select>
+
+            <select
+              className="input !py-1 !text-xs cursor-pointer font-medium"
+              value={mencaoFiltro}
+              onChange={(e) => setMencaoFiltro(e.target.value)}
+              disabled={mencoesDisponiveis.length === 0}
+              aria-label="Filtrar por nome da menção"
+            >
+              <option value="todos">
+                {mencoesDisponiveis.length > 0 ? `Todas as menções (${mencoesDisponiveis.reduce((s, [, q]) => s + q, 0)})` : "Sem menções neste chat"}
+              </option>
+              {mencoesDisponiveis.map(([nome, qtd]) => (
+                <option key={nome} value={nome}>@{nome} ({qtd})</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Chips de seleção de Itens */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1" role="group" aria-label="Filtrar por item">
+            <span className="text-[11px] font-semibold text-muted uppercase mr-1">Itens:</span>
+            <button className={chip(itens.size === 0)} onClick={() => setItens(new Set())}>Todas ({msgs.length})</button>
+            {chips.map((k) => (
+              <button key={k} className={chip(itens.has(k))} aria-pressed={itens.has(k)} onClick={() => alternar(k)}>
+                Item {k} ({contagemItens.get(k)})
+              </button>
+            ))}
+            {contagemItens.has("geral") && chips.length > 0 && (
+              <button className={chip(itens.has("geral"))} aria-pressed={itens.has("geral")} onClick={() => alternar("geral")}>
+                Gerais ({contagemItens.get("geral")})
+              </button>
+            )}
+            {(itens.size > 0 || eventoFiltro !== "todos" || mencaoFiltro !== "todos" || busca) && (
+              <button
+                onClick={() => { setItens(new Set()); setEventoFiltro("todos"); setMencaoFiltro("todos"); setBusca(""); }}
+                className="text-accent hover:underline ml-auto text-[11px] font-medium"
+              >
+                Limpar filtros
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -472,6 +594,11 @@ function ChatPainel({ pregao, msgs: salvas, carregando }: { pregao: Pregao; msgs
             <div className="flex items-center gap-2 text-[13px]">
               <span className="font-semibold text-brand">{deQuem(m.remetente)}</span>
               {m.evento && <EventoTag evento={m.evento} />}
+              {m.mencaoTermo && (
+                <span className="badge bg-danger/15 text-danger font-semibold text-[11px] gap-1" title="Menção à sua empresa">
+                  <Tag size={10} /> @{m.mencaoTermo}
+                </span>
+              )}
               {m.item ? <span className="ml-auto font-semibold text-accent">Item {m.item}</span>
                 : m.geral && <span className="ml-auto text-xs font-semibold text-muted">Mensagem geral</span>}
             </div>
