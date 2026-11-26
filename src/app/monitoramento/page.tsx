@@ -726,7 +726,7 @@ export default function Monitoramento() {
   };
 
   // Palavras-chave com contagem de pregões onde apareceram (nas mensagens)
-  const palavrasChaveEmpresa = empresa.palavras_chave || [];
+  const palavrasChaveEmpresa = useMemo(() => empresa.palavras_chave || [], [empresa]);
   const palavrasPregaoCount = useMemo(() => {
     const mapa = new Map<string, number>();
     for (const kw of palavrasChaveEmpresa) {
@@ -806,7 +806,7 @@ export default function Monitoramento() {
     void buscarDireto();
 
     return () => { cancelado = true; };
-  }, [current?.codigo_compra]);
+  }, [current, msgs]);
 
   // Contagem direto das mensagens salvas (o contador do pregão zera se ele for removido e cadastrado de novo).
   const porCompra = new Map<string, { n: number; ultima: string | null }>();
