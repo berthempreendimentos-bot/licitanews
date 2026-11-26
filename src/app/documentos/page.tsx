@@ -7,6 +7,7 @@ import { Download, Eye, ExternalLink, FilePlus2, FileUp, Folder, FolderPlus, Kan
 import { Empty, PageHeader, StatCard } from "@/components/ui";
 import { AnaliseView } from "@/components/AnaliseView";
 import { imprimirRelatorio, nomeDoRelatorio, RelatorioEdital } from "@/components/RelatorioEdital";
+import { fetchComLogin } from "@/lib/useAdmin";
 import { baixarPastaZip, enviarPdf, removerPdf, UploadPdf, VisualizarPdf, type ArquivoDoc } from "@/components/ArquivoPdf";
 import { IALendo } from "@/components/IALendo";
 import { AnalisesSalvas } from "@/components/AnalisesSalvas";
@@ -351,7 +352,9 @@ function Certidoes() {
         <button className="btn btn-ghost !py-1.5" onClick={() => {
           const sel = docs.filter((d) => d.arquivo).map((d) => ({ ...d, subpasta: nomeCompletoPasta(d.pasta_id ?? "", pastas) || null }));
           if (!sel.length) { alert("Nenhum documento com PDF para baixar."); return; }
-          baixarPastaZip(pastaFiltro?.nome ?? "documentos", sel, setBaixando).catch((e) => alert(`Falha: ${(e as Error).message}`));
+          baixarPastaZip(pastaFiltro?.nome ?? "documentos", sel, (feitos, total) => {
+            setBaixando(feitos >= total ? "" : "compactando...");
+          }).catch((e) => { setBaixando(""); alert(`Falha: ${(e as Error).message}`); });
         }} disabled={!!baixando}>
           <Download size={14} /> {baixando ? "Compactando..." : `Baixar ZIP (${docs.filter((d) => d.arquivo).length})`}
         </button>
@@ -374,7 +377,7 @@ function Certidoes() {
                       <div className="min-w-0 flex-1">
                         <div className="line-clamp-2 text-sm font-semibold">{d.descricao || "Sem descrição"}</div>
                         {d.emissao && <div className="text-[11px] text-muted">Emissão {dataBR(d.emissao)}</div>}
-                        {d.validade && <div className="text-[11px] font-semibold">Validade {dataBR(d.validade)} {d.dias == null ? "" : <span className={st.cls.split(" ").filter((c, i) => i > 0).join(" ")}>({st.label})</span>}</div>}
+                        {d.validade && <div className="text-[11px] font-semibold">Validade {dataBR(d.validade)} {st.dias == null ? "" : <span className={st.cls.split(" ").filter((c, i) => i > 0).join(" ")}>({st.label})</span>}</div>}
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-1">
@@ -389,13 +392,17 @@ function Certidoes() {
                         </button>
                       )}
                       {d.arquivo && (
-                        <button className="btn btn-ghost !py-1 !text-xs" onClick={() => {
+                        <button className="btn btn-ghost !py-1 !text-xs" onClick={async () => {
                           try {
-                            const url = URL.createObjectURL(new Blob([d.arquivo!.base64!], { type: "application/pdf" }));
+                            const { url } = await fetchComLogin(`/api/documentos/arquivo?path=${encodeURIComponent(d.arquivo!.path)}`);
+                            const r = await fetch(url);
+                            if (!r.ok) throw new Error(String(r.status));
+                            const blob = await r.blob();
                             const a = document.createElement("a");
-                            a.href = url; a.download = d.arquivo!.nome;
+                            a.href = URL.createObjectURL(blob);
+                            a.download = d.arquivo!.nome;
                             document.body.appendChild(a); a.click(); a.remove();
-                            URL.revokeObjectURL(url);
+                            URL.revokeObjectURL(a.href);
                           } catch (e) { alert(`Falha: ${(e as Error).message}`); }
                         }}><Download size={12} /></button>
                       )}
