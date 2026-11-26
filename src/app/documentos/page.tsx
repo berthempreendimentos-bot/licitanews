@@ -197,7 +197,7 @@ function BarraPastas({ pastas, docs, filtro, setFiltro }: {
       {/* Arvore de pastas */}
       <div className="card p-2.5">
         {raizes.length === 0 ? (
-          <p className="text-xs text-muted px-2 py-1">Nenhuma pasta criada ainda. Clique em "Nova pasta" para comecar.</p>
+          <p className="text-xs text-muted px-2 py-1">Nenhuma pasta criada ainda. Clique em &quot;Nova pasta&quot; para comecar.</p>
         ) : (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {raizes.map((p) => {

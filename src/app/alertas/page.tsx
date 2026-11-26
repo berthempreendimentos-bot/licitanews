@@ -214,7 +214,7 @@ export default function Alertas() {
             <select
               className="input !text-xs font-medium cursor-pointer"
               value={statusFiltro}
-              onChange={(e) => { setStatusFiltro(e.target.value as any); setLimite(50); }}
+              onChange={(e) => { setStatusFiltro(e.target.value as "nao_lidos" | "lidos" | "todos"); setLimite(50); }}
               aria-label="Filtrar por status de leitura"
             >
               <option value="nao_lidos">Apenas não lidos ({totalNaoLidos})</option>
