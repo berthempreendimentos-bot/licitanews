@@ -147,7 +147,12 @@ export function watchTerms(empresa: { cnpj: string; razao_social: string; palavr
 
 export function findMention(texto: string, terms: string[]): string | null {
   const t = norm(texto);
-  for (const term of terms) if (term && t.includes(norm(term))) return term;
+  for (const term of terms) {
+    if (term && t.includes(norm(term))) {
+      console.log(`[ingest-mention] match! termo="${term}" texto_norm="${t.slice(0, 120)}"`);
+      return term;
+    }
+  }
   return null;
 }
 
@@ -223,7 +228,10 @@ export function normalizeRawMessage(codigo: string, raw: Raw): Omit<ChatMessage,
     .find(Boolean);
   const chave = chaveKey ? raw[chaveKey] : undefined;
   const textoRaw = pickDeep(raw, ["mensagem", "texto", "conteudo", "textomensagem", "mensagemtexto", "recado", "corpo"]);
-  if (chave == null || textoRaw == null || isObj(chave)) return null;
+  if (chave == null || textoRaw == null || isObj(chave)) {
+    console.log(`[ingest-normalize] REJECTED compra=${codigo} chave=${chave} texto=${textoRaw != null ? "ok" : "null"} keys=${Object.keys(raw).slice(0,5).join(",")}`);
+    return null;
+  }
   const texto = valorTexto(textoRaw).slice(0, 2000);
   const quem = valorTexto(pickDeep(raw, [
     "tiporemetente", "perfilremetente", "remetente", "tipousuario", "perfil", "origem", "tipoorigem",
