@@ -253,7 +253,7 @@ function BarraPastas({ pastas, docs, filtro, setFiltro }: {
                             e.stopPropagation();
                             const idsSet = new Set([p.id, ...pastas.filter((s) => s.parent_id === p.id).map((s) => s.id)]);
                             const selecionados = docs.filter((d) => d.pasta_id && idsSet.has(d.pasta_id)).map((d) => {
-                              return { ...d, subpasta: nomeCompletoPasta(d.pasta_id, pastas) || null };
+                              return { ...d, subpasta: d.pasta_id ? nomeCompletoPasta(d.pasta_id, pastas) : null };
                             });
                             baixarPastaZip(p.nome, selecionados, () => {}).catch((e) => alert(`Falha: ${(e as Error).message}`));
                             setMenuAberto(null);
