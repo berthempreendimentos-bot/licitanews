@@ -16,10 +16,13 @@ export default function Alertas() {
   const { empresa } = useEmpresa();
   const cfg = alertasDaEmpresa(empresa);
   const [filtro, setFiltro] = useState<"todos" | "nao_lidos">("nao_lidos");
+  const [tipoFiltro, setTipoFiltro] = useState<string>("todos");
 
   // Filtra apenas os alertas que correspondem ao que o usuário escolheu em Alarme
   const alertasConfigurados = items.filter((a) => alertaCorrespondeConfig(a.tipo, cfg.eventos));
-  const list = filtro === "todos" ? alertasConfigurados : alertasConfigurados.filter((a) => !a.lido);
+  const list = alertasConfigurados
+    .filter((a) => (filtro === "todos" ? true : !a.lido))
+    .filter((a) => (tipoFiltro === "todos" ? true : a.tipo === tipoFiltro));
   const unread = alertasConfigurados.filter((a) => !a.lido);
 
   const descricaoFiltro = cfg.eventos.length === 0
@@ -41,6 +44,12 @@ export default function Alertas() {
             <button className="btn btn-ghost" onClick={() => setFiltro(filtro === "todos" ? "nao_lidos" : "todos")}>
               {filtro === "todos" ? "Só não lidos" : "Ver todos"}
             </button>
+            <select className="btn btn-ghost" value={tipoFiltro} onChange={(e) => setTipoFiltro(e.target.value)}>
+              <option value="todos">Todos os tipos</option>
+              {cfg.eventos.map((ev) => (
+                <option key={ev} value={ev}>{ev}</option>
+              ))}
+            </select>
             <button className="btn btn-ghost" disabled={!unread.length} onClick={() => db.upsertMany("alerts", unread.map((a) => ({ ...a, lido: true })))}>
               <CheckCheck size={14} /> Marcar todos como lidos
             </button>
