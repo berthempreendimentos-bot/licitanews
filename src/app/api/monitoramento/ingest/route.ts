@@ -174,12 +174,16 @@ async function processar(
 
   const cfg = alertasDaEmpresa(empresa);
   const disparos: Disparo[] = [];
+  let temMencaoNova = false;
   for (const m of fresh) {
     const ev = classifyMessage(m.texto);
     const full: ChatMessage = { ...m, evento: ev?.evento ?? null };
     rows.push({ user_id: userId, collection: "chat_messages", id: full.id, data: full });
     const termo = findMention(m.texto, terms);
-    if (termo) mentions.push({ termo_encontrado: termo, texto: m.texto.slice(0, 160) });
+    if (termo) {
+      mentions.push({ termo_encontrado: termo, texto: m.texto.slice(0, 160) });
+      temMencaoNova = true;
+    }
     const disparo = recente(m.data_hora) ? disparosPara(cfg, m, termo, ev?.evento ?? null) : null;
     if (disparo) disparos.push(disparo);
     if (termo || ev) {
@@ -198,6 +202,11 @@ async function processar(
         rows.push({ user_id: userId, collection: "alerts", id: alert.id, data: alert });
       }
     }
+  }
+
+  // Auto-classifica como favorita se houve menção a algum termo vigiado.
+  if (temMencaoNova && !pregao.favorita) {
+    rows.push({ user_id: userId, collection: "pregoes", id: pregao.id, data: { ...pregao, favorita: true } });
   }
   // Mensagens lidas do portal (mesmo sem novidade) atualizam a última captura.
   // Sinal de vida da extensão (lista vazia): só marca como "Capturando", sem mexer na última captura.

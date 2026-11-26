@@ -141,10 +141,11 @@ export function VisualizarPdf({ arquivo, titulo, onClose }: { arquivo: ArquivoDo
   const [url, setUrl] = useState("");
   const [erro, setErro] = useState("");
   useEffect(() => {
+    if (!arquivo) return;
     fetchComLogin(`/api/documentos/arquivo?path=${encodeURIComponent(arquivo.path)}`)
       .then((d) => setUrl(d.url))
       .catch((e) => setErro((e as Error).message));
-  }, [arquivo.path]);
+  }, [arquivo?.path]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-black/60 p-3 sm:p-6" onClick={onClose}>
@@ -153,14 +154,14 @@ export function VisualizarPdf({ arquivo, titulo, onClose }: { arquivo: ArquivoDo
           <FileText size={18} className="shrink-0 text-brand" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-bold">{titulo}</div>
-            <div className="truncate text-[11px] text-muted">{arquivo.nome} · {tamanhoLegivel(arquivo.tamanho)}</div>
+            {arquivo && <div className="truncate text-[11px] text-muted">{arquivo.nome} · {tamanhoLegivel(arquivo.tamanho)}</div>}
           </div>
           {url && <a className="btn btn-ghost !py-1 !text-xs" href={url} target="_blank" rel="noreferrer"><ExternalLink size={13} /> Abrir em nova aba</a>}
           <button aria-label="Fechar" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="flex-1 bg-bg">
           {erro ? <div className="p-6 text-sm text-danger">{erro}</div>
-            : url ? <iframe src={url} title={arquivo.nome} className="h-full w-full" />
+            : url ? <iframe src={url} title={arquivo?.nome ?? ''} className="h-full w-full" />
               : <div className="flex h-full items-center justify-center text-sm text-muted"><Loader2 size={16} className="mr-2 animate-spin" /> Carregando PDF…</div>}
         </div>
       </div>

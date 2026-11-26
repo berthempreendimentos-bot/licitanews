@@ -63,6 +63,8 @@ export type Pregao = {
   municipio?: string;
   uf?: string;
   objeto?: string;
+  /** Marcada como favorita — tem prioridade na fila de monitoramento. */
+  favorita?: boolean;
 };
 
 export type ChatMessage = {

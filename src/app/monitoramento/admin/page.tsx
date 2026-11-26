@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, Loader2, Play, RefreshCw, Square } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2, Play, RefreshCw, Square, Star } from "lucide-react";
 import { Empty, PageHeader, StatCard } from "@/components/ui";
 import { SomenteAdmin } from "@/components/SomenteAdmin";
 import {
@@ -28,6 +28,19 @@ const ROTULO: Record<EstadoCiclo, { texto: string; cor: string }> = {
   parado: { texto: "Interrompido", cor: "bg-bg text-muted" },
 };
 
+function fmtTempo(ms: number): string {
+  const totalSeg = Math.round(ms / 1000);
+  const m = Math.floor(totalSeg / 60);
+  const s = totalSeg % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function mediaTempo(tempos: number[]): string | null {
+  if (!tempos.length) return null;
+  const soma = tempos.reduce((a, b) => a + b, 0);
+  return fmtTempo(soma / tempos.length);
+}
+
 export default function Page() {
   return (
     <SomenteAdmin>
@@ -40,7 +53,7 @@ import { useEffect } from "react";
 
 function MonitoramentoAdmin() {
   // O ciclo roda em segundo plano (src/lib/cicloAdmin.ts): esta página só mostra e controla.
-  const { compras, recentes, situacao, rodando, ciclo, lote, carregando, erro, aviso } = useCiclo();
+  const { compras, recentes, situacao, rodando, ciclo, lote, carregando, erro, aviso, tempos_ciclo } = useCiclo();
 
   useEffect(() => {
     void carregar();
@@ -53,6 +66,27 @@ function MonitoramentoAdmin() {
   const feitos = valores.filter((s) => !["fila", "abrindo", "capturando", "captcha"].includes(s.estado)).length;
   const emAndamento = valores.filter((s) => ["abrindo", "capturando", "captcha"].includes(s.estado)).length;
   const novas = valores.reduce((t, s) => t + (s.synced ?? 0), 0);
+
+  // Classificação das licitações
+  const favoritas = compras.filter((c) => c.favorita);
+  const codigosFavoritas = new Set(favoritas.map((c) => c.codigo_compra));
+  const codigosNovas = new Set(compras.filter((c) => recentes.includes(c.codigo_compra) || !c.ultima_captura).map((c) => c.codigo_compra));
+  const normais = compras.filter((c) => !c.favorita);
+  const qtdFavoritas = favoritas.length;
+  const qtdNormais = normais.length;
+  const qtdNovas = codigosNovas.size;
+
+  // Médias de tempo por grupo (últimos 5 ciclos de cada)
+  const temposFavoritas = [...codigosFavoritas].flatMap((c) => tempos_ciclo[c] || []);
+  const temposNormais = [...new Set(normais.map((c) => c.codigo_compra))].flatMap((c) => {
+    if (codigosNovas.has(c)) return []; // novas já contam no grupo "novas"
+    return tempos_ciclo[c] || [];
+  });
+  const temposNovas = [...codigosNovas].flatMap((c) => tempos_ciclo[c] || []);
+
+  const mediaFavoritas = mediaTempo(temposFavoritas);
+  const mediaNormais = mediaTempo(temposNormais);
+  const mediaNovas = mediaTempo(temposNovas);
 
   return (
     <>
@@ -74,6 +108,16 @@ function MonitoramentoAdmin() {
           </>
         }
       />
+
+      {/* Board de estatísticas */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+        <StatCard label="Favoritas" value={qtdFavoritas} hint={qtdFavoritas === 1 ? "licitação" : "licitações"} />
+        <StatCard label="Normais" value={qtdNormais} hint={qtdNormais === 1 ? "licitação" : "licitações"} />
+        <StatCard label="Novas" value={qtdNovas} hint={qtdNovas === 1 ? "licitação" : "licitações"} />
+        <StatCard label="Tempo médio (favoritas)" value={mediaFavoritas ?? "—"} hint={mediaFavoritas ? "por ciclo" : undefined} />
+        <StatCard label="Tempo médio (normais)" value={mediaNormais ?? "—"} hint={mediaNormais ? "por ciclo" : undefined} />
+        <StatCard label="Tempo médio (novas)" value={mediaNovas ?? "—"} hint={mediaNovas ? "por ciclo" : undefined} />
+      </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         <StatCard label="Compras monitoradas" value={compras.length} />
@@ -124,6 +168,7 @@ function MonitoramentoAdmin() {
                     <td className="px-3 py-1.5 truncate font-medium" title={[c.orgao, local, c.codigo_compra].filter(Boolean).join(" · ")}>
                       {recentes.includes(c.codigo_compra) && <span className="badge mr-1.5 bg-accent-soft text-accent">Nova</span>}
                       {c.titulo}
+                      {c.favorita && <Star size={12} className="inline ml-1.5 text-yellow-500 fill-yellow-400 align-middle" />}
                       {c.situacao_monitoramento && (
                         <span className="ml-2 badge bg-bg text-muted">{rotuloSituacaoMonitoramento(c.situacao_monitoramento)}</span>
                       )}

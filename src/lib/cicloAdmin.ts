@@ -46,10 +46,11 @@ export type CicloEstado = {
   carregando: boolean;
   erro: string;
   aviso: string;
+  tempos_ciclo: Record<string, number[]>;
 };
 
 let estado: CicloEstado = {
-  compras: [], recentes: [], situacao: {}, rodando: false, ciclo: 0, lote: 0, carregando: false, erro: "", aviso: "",
+  compras: [], recentes: [], situacao: {}, rodando: false, ciclo: 0, lote: 0, carregando: false, erro: "", aviso: "", tempos_ciclo: {},
 };
 const ouvintes = new Set<() => void>();
 function set(parcial: Partial<CicloEstado>) {
@@ -146,6 +147,7 @@ function abrirEmOrdem(codigo: string, janela: number) {
 /** Abre a compra na janela indicada, espera a extensão avisar que importou o chat e fecha a aba (se foi aberta aqui). */
 async function atualizar(codigo: string, janela: number) {
   marcar(codigo, { estado: "abrindo" });
+  const inicioProcessamento = Date.now();
   const fim: { s: Situacao | null; respondeu: boolean } = { s: null, respondeu: false };
   // Escuta antes de abrir: o aviso pode chegar logo depois da abertura.
   const pararDeEscutar = escutarCaptura(codigo, (e, synced) => {
@@ -155,7 +157,12 @@ async function atualizar(codigo: string, janela: number) {
   });
   try {
     const r = await abrirEmOrdem(codigo, janela);
-    if (!r.ok) return marcar(codigo, { estado: "erro", detalhe: "a extensão não abriu a compra" });
+    if (!r.ok) {
+      const tempo = Date.now() - inicioProcessamento;
+      const historico = estado.tempos_ciclo?.[codigo] || [];
+      set({ tempos_ciclo: { ...estado.tempos_ciclo, [codigo]: [...historico.slice(-4), tempo] } });
+      return marcar(codigo, { estado: "erro", detalhe: "a extensão não abriu a compra" });
+    }
     // Já estava aberta: os avisos dela já saíram, então pede o estado de novo.
     if (r.jaAberta) pedirEstadoCaptura(codigo);
     if (!fim.s) marcar(codigo, { estado: "capturando" });
@@ -169,6 +176,9 @@ async function atualizar(codigo: string, janela: number) {
       await esperar(1000);
     }
     marcar(codigo, fim.s ?? { estado: parar ? "parado" : "tempo" });
+    const tempo = Date.now() - inicioProcessamento;
+    const historico = estado.tempos_ciclo?.[codigo] || [];
+    set({ tempos_ciclo: { ...estado.tempos_ciclo, [codigo]: [...historico.slice(-4), tempo] } });
     if (!r.jaAberta) await fecharNoComprasnet(codigo);
   } finally {
     pararDeEscutar();
@@ -252,33 +262,38 @@ async function rodarFila() {
 /**
  * Constrói a fila contínua de monitoramento:
  * 1. NOVAS compras (em `recentes` ou nunca capturadas) → FRENTE da fila
- * 2. Compras em monitoramento → ordenadas das mais antigas (meio) para as mais recentemente atualizadas (FIM da fila)
+ * 2. FAVORITAS → logo após as novas (prioridade no ciclo)
+ * 3. DEMAIS → ordenadas das mais antigas (meio) para as mais recentemente atualizadas (FIM da fila)
  * Isso cria um loop contínuo onde quem acabou de atualizar aguarda o fim da fila para rodar de novo.
  */
 function construirFila(): string[] {
   const capturaMap = new Map<string, string | null>();
+  const favoritaMap = new Map<string, boolean>();
   for (const c of estado.compras) {
     capturaMap.set(c.codigo_compra, c.ultima_captura);
+    favoritaMap.set(c.codigo_compra, !!c.favorita);
   }
 
   const ativasList = [...ativas];
 
   // 1. NOVAS: em estado.recentes ou que nunca tiveram nenhuma captura (ultima_captura nula)
   const novas = ativasList.filter((c) => estado.recentes.includes(c) || !capturaMap.get(c));
-  
-  // 2. DEMAIS: já foram capturadas anteriormente
-  const comCaptura = ativasList.filter((c) => !novas.includes(c));
 
-  // Ordena comCaptura: as que têm a última captura mais antiga vêm primeiro,
+  // 2. FAVORITAS (já capturadas) + 3. DEMAIS
+  const comCaptura = ativasList.filter((c) => !novas.includes(c));
+  const favoritas = comCaptura.filter((c) => favoritaMap.get(c));
+  const demais = comCaptura.filter((c) => !favoritaMap.get(c));
+
+  // Ordena demais: as que têm a última captura mais antiga vêm primeiro,
   // e as atualizadas mais recentemente vão para o FINAL DA FILA.
-  comCaptura.sort((a, b) => {
+  demais.sort((a, b) => {
     const ta = capturaMap.get(a) || "";
     const tb = capturaMap.get(b) || "";
     return ta.localeCompare(tb);
   });
 
-  // Fila: [NOVAS na frente] -> [Menos atualizadas no meio] -> [Mais recentemente atualizadas no final]
-  return [...novas, ...comCaptura];
+  // Fila: [NOVAS na frente] -> [FAVORITAS em seguida] -> [Demais (mais antigas primeiro)]
+  return [...novas, ...favoritas, ...demais];
 }
 
 export async function iniciar() {
@@ -332,5 +347,5 @@ export function encerrarSessao() {
   if (vigia) clearInterval(vigia);
   vigia = null;
   conhecidas = null;
-  set({ compras: [], recentes: [], situacao: {}, ciclo: 0, lote: 0, erro: "", aviso: "" });
+  set({ compras: [], recentes: [], situacao: {}, ciclo: 0, lote: 0, erro: "", aviso: "", tempos_ciclo: {} });
 }

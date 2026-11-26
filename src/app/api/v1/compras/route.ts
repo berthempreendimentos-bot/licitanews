@@ -12,6 +12,8 @@ export type CompraApi = {
   objeto?: string;
   mensagens: number;
   ultima_captura: string | null;
+  /** Marcada como favorita pelo usuário ou automaticamente por menção a palavra-chave. */
+  favorita?: boolean;
   /** Só na chave de administrador: quantos usuários monitoram a compra. */
   usuarios?: number;
 };
@@ -43,13 +45,14 @@ export async function GET(req: Request) {
       porCodigo.set(p.codigo_compra, {
         codigo_compra: p.codigo_compra, titulo: p.titulo, link: p.link, status: p.status,
         orgao: p.orgao, municipio: p.municipio, uf: p.uf, objeto: p.objeto,
-        mensagens: p.mensagens || 0, ultima_captura: p.ultima_captura, donos: new Set(),
+        mensagens: p.mensagens || 0, ultima_captura: p.ultima_captura, favorita: !!p.favorita, donos: new Set(),
       });
     } else {
       // Entre usuários, vale a captura mais nova e o maior histórico; "Encerrado" só se todos encerraram.
       if (p.ultima_captura && (!atual.ultima_captura || p.ultima_captura > atual.ultima_captura)) atual.ultima_captura = p.ultima_captura;
       atual.mensagens = Math.max(atual.mensagens, p.mensagens || 0);
       if (atual.status === "Encerrado" && p.status !== "Encerrado") atual.status = p.status;
+      if (p.favorita) atual.favorita = true;
     }
     porCodigo.get(p.codigo_compra)!.donos.add(r.user_id as string);
   }

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Plus, Trash2, X, Square, Play, ExternalLink, Building2, MapPin, BellRing, Search, ShieldCheck, Eye, Tag } from "lucide-react";
+import { Plus, Trash2, X, Square, Play, ExternalLink, Building2, MapPin, BellRing, Search, ShieldCheck, Eye, Tag, Star } from "lucide-react";
 import { Empty, PageHeader, StatCard } from "@/components/ui";
 import { corEvento, EventoTag } from "@/components/EventoTag";
 import { db, newId, useCollection, useEmpresa } from "@/lib/store";
@@ -290,10 +290,11 @@ function Keywords() {
   );
 }
 
-type Filtro = "todos" | "ativos" | "alertas" | "encerrados";
+type Filtro = "todos" | "ativos" | "favoritas" | "alertas" | "encerrados";
 const FILTROS: { id: Filtro; nome: string }[] = [
   { id: "todos", nome: "Todos" },
   { id: "ativos", nome: "Ativos" },
+  { id: "favoritas", nome: "⭐ Favoritas" },
   { id: "alertas", nome: "Com alertas novos" },
   { id: "encerrados", nome: "Encerrados" },
 ];
@@ -324,15 +325,18 @@ function maisRecente(a: string | null, b: string | null) {
   return a > b ? a : b;
 }
 
-function PregaoCard({ p, selected, onSelect, onAbrir, alertas, mensagens, ultima }: {
-  p: Pregao; selected: boolean; onSelect: () => void; onAbrir: () => void; alertas: number; mensagens: number; ultima: string | null;
+function PregaoCard({ p, selected, onSelect, onAbrir, alertas, mensagens, ultima, onToggleFavorita }: {
+  p: Pregao; selected: boolean; onSelect: () => void; onAbrir: () => void; alertas: number; mensagens: number; ultima: string | null; onToggleFavorita: () => void;
 }) {
   const ativo = p.status !== "Encerrado";
   const valido = !!parseCodigoCompra(p.codigo_compra);
   const local = [p.municipio, p.uf].filter(Boolean).join("/");
   return (
     <div onClick={onSelect} className={`card p-4 cursor-pointer transition hover:border-accent/50 ${selected ? "border-accent ring-2 ring-accent-soft" : ""} ${ativo ? "" : "opacity-60"}`}>
-      <div className="font-bold text-[15px] leading-snug text-brand truncate">{tituloPregao(p)}</div>
+      <div className="font-bold text-[15px] leading-snug text-brand truncate">
+        {p.favorita && <Star size={14} className="inline text-yellow-500 fill-yellow-400 mr-1 -mt-0.5" />}
+        {tituloPregao(p)}
+      </div>
       {p.situacao_monitoramento && (
         <div className="mt-1">
           <span className="badge bg-bg text-muted">{rotuloSituacaoMonitoramento(p.situacao_monitoramento)}</span>
@@ -381,6 +385,11 @@ function PregaoCard({ p, selected, onSelect, onAbrir, alertas, mensagens, ultima
             <ExternalLink size={12} /> Abrir no Comprasnet
           </button>
         )}
+        <button className={`inline-flex items-center gap-1 ${p.favorita ? "text-yellow-500 hover:text-yellow-600" : "text-muted hover:text-yellow-500"}`}
+          onClick={(e) => { e.stopPropagation(); onToggleFavorita(); }} title={p.favorita ? "Remover dos favoritos" : "Marcar como favorito"}>
+          <Star size={14} className={p.favorita ? "fill-yellow-400" : ""} />
+          {p.favorita ? "Favorita" : "Favoritar"}
+        </button>
         <button className="text-muted hover:text-brand inline-flex items-center gap-1"
           onClick={(e) => { e.stopPropagation(); db.update("pregoes", p.id, { status: ativo ? "Encerrado" : "Aguardando captura" }); }}>
           {ativo ? <><Square size={12} /> Encerrar</> : <><Play size={12} /> Reativar</>}
@@ -644,7 +653,15 @@ export default function Monitoramento() {
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState("");
+  const [toast, setToast] = useState("");
   useDadosOrgao(pregoes);
+
+  function toggleFavorita(pregao: Pregao) {
+    const nova = !pregao.favorita;
+    db.update("pregoes", pregao.id, { favorita: nova });
+    setToast(nova ? `⭐ "${tituloPregao(pregao)}" adicionada aos favoritos.` : `"${tituloPregao(pregao)}" removida dos favoritos.`);
+    setTimeout(() => setToast(""), 3000);
+  }
 
   async function abrir(codigo: string, mostrar: boolean) {
     setErr("");
@@ -687,6 +704,7 @@ export default function Monitoramento() {
   const contagem: Record<Filtro, number> = {
     todos: pregoes.length,
     ativos: pregoes.filter((p) => p.status !== "Encerrado").length,
+    favoritas: pregoes.filter((p) => p.favorita && p.status !== "Encerrado").length,
     alertas: pregoes.filter((p) => alertasNovos(p.codigo_compra) > 0).length,
     encerrados: pregoes.filter((p) => p.status === "Encerrado").length,
   };
@@ -694,6 +712,7 @@ export default function Monitoramento() {
     .filter((p) => {
       if (filtro === "ativos" && p.status === "Encerrado") return false;
       if (filtro === "encerrados" && p.status !== "Encerrado") return false;
+      if (filtro === "favoritas" && !p.favorita) return false;
       if (filtro === "alertas" && !alertasNovos(p.codigo_compra)) return false;
       return combina(p, busca);
     })
@@ -773,10 +792,14 @@ export default function Monitoramento() {
       </form>
       {err && <div className="-mt-2 mb-4 text-xs text-danger">{err}</div>}
       {info && <div className="-mt-2 mb-4 text-xs text-ok">{info}</div>}
+      {toast && <div className="-mt-2 mb-4 text-xs text-yellow-600 bg-yellow-50 px-3 py-2 rounded-lg border border-yellow-200">{toast}</div>}
 
       <div className="grid grid-cols-2 gap-3 mb-4">
         <StatCard label="Pregões monitorados" value={pregoes.length} />
-        <StatCard label="Alertas não lidos" value={alertsConfigurados.filter((a) => !a.lido).length} accent />
+        <div className="flex gap-3">
+          <StatCard label="⭐ Favoritos" value={pregoes.filter((p) => p.favorita).length} />
+          <StatCard label="Alertas não lidos" value={alertsConfigurados.filter((a) => !a.lido).length} accent />
+        </div>
       </div>
 
       <Keywords />
@@ -824,7 +847,8 @@ export default function Monitoramento() {
             <PregaoCard key={p.id} p={p} selected={current?.id === p.id} alertas={alertasNovos(p.codigo_compra)}
               mensagens={Math.max(porCompra.get(p.codigo_compra)?.n ?? 0, p.mensagens ?? 0)}
               ultima={maisRecente(porCompra.get(p.codigo_compra)?.ultima ?? null, p.ultima_captura)}
-              onSelect={() => setSelected(p.id)} onAbrir={() => void abrir(p.codigo_compra, true)} />
+              onSelect={() => setSelected(p.id)} onAbrir={() => void abrir(p.codigo_compra, true)}
+              onToggleFavorita={() => toggleFavorita(p)} />
           ))}
         </div>
         <div className="card p-4 min-h-60 lg:sticky lg:top-20 self-start">
