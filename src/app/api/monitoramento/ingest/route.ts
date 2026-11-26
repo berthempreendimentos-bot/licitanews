@@ -27,10 +27,11 @@ export async function POST(req: Request) {
   const key = req.headers.get("x-ingest-key") || "";
   if (key.length < 16) return NextResponse.json({ error: "chave inválida" }, { status: 401 });
 
-  const body = (await req.json().catch(() => null)) as { codigo_compra?: string; messages?: Record<string, unknown>[] } | null;
+  const body = (await req.json().catch(() => null)) as { codigo_compra?: string; messages?: Record<string, unknown>[]; since?: string } | null;
   const codigo = String(body?.codigo_compra || "");
   if (!/^\d{10,}$/.test(codigo)) return NextResponse.json({ error: "codigo_compra inválido" }, { status: 400 });
   const raw = Array.isArray(body?.messages) ? body!.messages.slice(0, 50) : [];
+  const since = body?.since || null; // ID da última mensagem capturada — para sync incremental
 
   const { data: emps, error: empErr } = await sb
     .from("records")
@@ -115,6 +116,7 @@ export async function POST(req: Request) {
   }
 
   const msgs = raw.map((r) => normalizeRawMessage(codigo, r)).filter((m): m is Omit<ChatMessage, "evento"> => !!m);
+  console.log(`[ingest] compra=${codigo} raw=${raw.length} validas=${msgs.length} ativos=${ativos.length} ativos_user=${[...ativos.keys()].join(",")}`);
   const now = new Date().toISOString();
   const rows: Linha[] = [];
   let resposta: { synced: number; mentions: Mencao[]; disparos: Disparo[]; alertas: AlertasChat } = {
@@ -165,6 +167,10 @@ async function processar(
   const terms = watchTerms(empresa);
   const mentions: Mencao[] = [];
   const rows: Linha[] = [];
+
+  // --- LOG: termos vigiados para esta empresa ---
+  console.log(`[ingest-fav] compra=${codigo} user=${userId} cnpj=${empresa.cnpj} terms=${JSON.stringify(terms)} msgs_validadas=${msgs.length}`);
+
   // Mensagens já salvas que voltaram com remetente/item: completa sem gerar alerta de novo.
   for (const m of msgs) {
     const old = known.get(m.id);
@@ -183,6 +189,7 @@ async function processar(
     if (termo) {
       mentions.push({ termo_encontrado: termo, texto: m.texto.slice(0, 160) });
       temMencaoNova = true;
+      console.log(`[ingest-fav] MENTION! compra=${codigo} user=${userId} termo="${termo}" texto="${m.texto.slice(0, 100)}"`);
     }
     const disparo = recente(m.data_hora) ? disparosPara(cfg, m, termo, ev?.evento ?? null) : null;
     if (disparo) disparos.push(disparo);
@@ -192,7 +199,7 @@ async function processar(
         const alert: Alert = {
           id: `alert:${full.id}`,
           tipo: tipoAlerta,
-          titulo: termo ? `🚨 Menção a "${termo}" no pregão ${codigo}` : `${ev!.evento} — pregão ${codigo}`,
+          titulo: termo ? `Menção a "${termo}" no pregão ${codigo}` : `${ev!.evento} — pregão ${codigo}`,
           mensagem: m.texto.slice(0, 300),
           prioridade: termo ? "Alta" : ev!.prioridade,
           lido: false,
@@ -204,8 +211,11 @@ async function processar(
     }
   }
 
+  console.log(`[ingest-fav] compra=${codigo} user=${userId} fresh=${fresh.length} mentions=${mentions.length} temMencaoNova=${temMencaoNova} pregao.favorita=${pregao.favorita}`);
+
   // Auto-classifica como favorita se houve menção a algum termo vigiado.
   if (temMencaoNova && !pregao.favorita) {
+    console.log(`[ingest-fav] AUTO-FAVORITE! compra=${codigo} user=${userId} nome=${empresa.razao_social}`);
     rows.push({ user_id: userId, collection: "pregoes", id: pregao.id, data: { ...pregao, favorita: true } });
   }
   // Mensagens lidas do portal (mesmo sem novidade) atualizam a última captura.
