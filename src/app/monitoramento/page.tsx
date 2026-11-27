@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Plus, Trash2, X, Square, Play, ExternalLink, Building2, MapPin, BellRing, Search, ShieldCheck, Tag, Star } from "lucide-react";
 import { Empty, PageHeader, StatCard } from "@/components/ui";
@@ -432,6 +432,38 @@ export default function Monitoramento() {
   }
 
   const alertasNovos = (codigo: string) => alertsConfigurados.filter((a) => !a.lido && a.ref === codigo).length;
+
+  // Palavras-chave da empresa e, para cada uma, os pregões cujo chat a menciona.
+  const palavraPorPregao = useMemo(() => {
+    const mapa = new Map<string, Set<string>>();
+    const termos = empresa.palavras_chave || [];
+    if (!termos.length) return mapa;
+    for (const m of msgs) {
+      const texto = semAcento(m.texto);
+      for (const termo of termos) {
+        const t = semAcento(termo);
+        if (!t || !texto.includes(t)) continue;
+        let set = mapa.get(m.codigo_compra);
+        if (!set) { set = new Set(); mapa.set(m.codigo_compra, set); }
+        set.add(termo);
+      }
+    }
+    return mapa;
+  }, [empresa.palavras_chave, msgs]);
+
+  // Quantos pregões mencionam cada palavra-chave (ordem alfabética).
+  const palavrasOrdenadas = useMemo(() => {
+    const contagem = new Map<string, number>();
+    for (const termo of empresa.palavras_chave || []) {
+      let n = 0;
+      for (const set of palavraPorPregao.values()) if (set.has(termo)) n++;
+      contagem.set(termo, n);
+    }
+    return Array.from(contagem.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [empresa.palavras_chave, palavraPorPregao]);
+
+  const pregouComPalavra = (codigo: string, termo: string) => palavraPorPregao.get(codigo)?.has(termo) ?? false;
+
   const contagem: Record<Filtro, number> = {
     todos: pregoes.length,
     ativos: pregoes.filter((p) => p.status !== "Encerrado").length,
@@ -447,7 +479,7 @@ export default function Monitoramento() {
       if (filtro === "favoritas" && !p.favorita) return false;
       if (filtro === "alertas" && !alertasNovos(p.codigo_compra)) return false;
       if (busca.trim() && !combina(p, busca)) return false;
-      if (palavraFiltro && !p.palavras_chave?.includes(palavraFiltro)) return false;
+      if (palavraFiltro && !pregouComPalavra(p.codigo_compra, palavraFiltro)) return false;
       return true;
     })
     .sort((a, b) => {
@@ -563,11 +595,9 @@ export default function Monitoramento() {
           </div>
           <select className="input w-auto shrink-0" value={palavraFiltro} onChange={(e) => setPalavraFiltro(e.target.value)} aria-label="Filtrar por palavra-chave">
             <option value="">Todas as palavras-chave</option>
-            {(() => {
-              const todas = new Set<string>();
-              pregoes.forEach((p) => p.palavras_chave?.forEach((kw: string) => todas.add(kw)));
-              return Array.from(todas).sort().map((kw) => <option key={kw} value={kw}>{kw}</option>);
-            })()}
+            {palavrasOrdenadas.map(([termo, n]) => (
+              <option key={termo} value={termo}>{termo} ({n})</option>
+            ))}
           </select>
         </div>
       )}
@@ -579,9 +609,10 @@ export default function Monitoramento() {
             <Empty title="Nenhum pregão encontrado" text="Mude a pesquisa ou o filtro."
               action={<button className="btn btn-ghost" onClick={() => { setBusca(""); setFiltro("todos"); setPalavraFiltro(""); }}>Limpar pesquisa</button>} />
           )}
-          {(busca || filtro !== "todos") && filtrados.length > 0 && (
+          {(busca || filtro !== "todos" || palavraFiltro) && filtrados.length > 0 && (
             <div className="px-1 text-xs text-muted">
               {filtrados.length} de {pregoes.length} pregões
+              {palavraFiltro && <span className="ml-1 text-accent font-semibold">• Palavra-chave: &ldquo;{palavraFiltro}&rdquo;</span>}
             </div>
           )}
           {filtrados.map((p) => (

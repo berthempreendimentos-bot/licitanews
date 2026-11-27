@@ -150,18 +150,18 @@ export default function PalavrasChavePage() {
               Nenhuma encontrada para &ldquo;{modalBusca}&rdquo;.
             </div>
           ) : (
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {palavrasFiltradas.map((k) => (
                 <span
                   key={k}
-                  className="badge bg-accent-soft text-brand !text-xs !py-1.5 !px-3 font-medium flex items-center gap-2 border border-border/80"
+                  className="badge bg-accent-soft text-brand !text-xs !py-1.5 !px-3 font-medium flex items-center gap-2 border border-border/80 w-full min-w-0"
                 >
-                  <span className="max-w-[320px] truncate">{k}</span>
+                  <span className="truncate" title={k}>{k}</span>
                   <button
                     type="button"
                     aria-label={`Remover ${k}`}
                     onClick={() => removerTermo(k)}
-                    className="text-muted hover:text-danger hover:bg-danger/10 p-0.5 rounded transition"
+                    className="text-muted hover:text-danger hover:bg-danger/10 p-0.5 rounded transition ml-auto shrink-0"
                   >
                     <X size={13} />
                   </button>

@@ -65,8 +65,6 @@ export type Pregao = {
   objeto?: string;
   /** Marcada como favorita — tem prioridade na fila de monitoramento. */
   favorita?: boolean;
-  /** Palavras-chave vinculadas ao pregão (para filtro). */
-  palavras_chave?: string[];
 };
 
 export type ChatMessage = {
