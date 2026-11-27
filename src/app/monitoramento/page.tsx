@@ -542,8 +542,8 @@ export default function Monitoramento() {
       </div>
 
       {pregoes.length > 0 && (
-        <div className="card mt-4 p-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <div className="relative flex-1">
+        <div className="card mt-4 p-3 flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[200px]">
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <input className="input !pl-9 !pr-9" value={busca} onChange={(e) => setBusca(e.target.value)}
               placeholder="Pesquisar pregão: UASG, número, órgão, cidade, objeto ou código" aria-label="Pesquisar pregões monitorados" />
@@ -553,14 +553,6 @@ export default function Monitoramento() {
               </button>
             )}
           </div>
-          <select className="input" value={palavraFiltro} onChange={(e) => setPalavraFiltro(e.target.value)} aria-label="Filtrar por palavra-chave">
-            <option value="">Todas as palavras-chave</option>
-            {(() => {
-              const todas = new Set<string>();
-              pregoes.forEach((p) => p.palavras_chave?.forEach((kw: string) => todas.add(kw)));
-              return Array.from(todas).sort().map((kw) => <option key={kw} value={kw}>{kw}</option>);
-            })()}
-          </select>
           <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar pregões">
             {FILTROS.map((f) => (
               <button key={f.id} onClick={() => setFiltro(f.id)} aria-pressed={filtro === f.id}
@@ -569,6 +561,14 @@ export default function Monitoramento() {
               </button>
             ))}
           </div>
+          <select className="input w-auto shrink-0" value={palavraFiltro} onChange={(e) => setPalavraFiltro(e.target.value)} aria-label="Filtrar por palavra-chave">
+            <option value="">Todas as palavras-chave</option>
+            {(() => {
+              const todas = new Set<string>();
+              pregoes.forEach((p) => p.palavras_chave?.forEach((kw: string) => todas.add(kw)));
+              return Array.from(todas).sort().map((kw) => <option key={kw} value={kw}>{kw}</option>);
+            })()}
+          </select>
         </div>
       )}
 
