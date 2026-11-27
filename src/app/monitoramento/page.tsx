@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Plus, Trash2, X, Square, Play, ExternalLink, Building2, MapPin, BellRing, Search, ShieldCheck, Tag, Star } from "lucide-react";
 import { Empty, PageHeader, StatCard } from "@/components/ui";
 import { corEvento, EventoTag } from "@/components/EventoTag";
+import { TextoComDestaque } from "@/components/TextoComDestaque";
 import { db, newId, useCollection, useEmpresa } from "@/lib/store";
 import { alertaCorrespondeConfig, alertasDaEmpresa, codigoCompraFromLink, comprasnetUrl, itemDoTexto, orgaoPregao, parseCodigoCompra, pncpFromLink, rotuloRemetente, tituloPregao, findMention, watchTerms } from "@/lib/monitor";
 import { rotuloSituacaoMonitoramento } from "@/lib/monitor";
@@ -340,7 +341,9 @@ function ChatPainel({ pregao, msgs: salvas, carregando }: { pregao: Pregao; msgs
               {m.item ? <span className="ml-auto font-semibold text-accent">Item {m.item}</span>
                 : m.geral && <span className="ml-auto text-xs font-semibold text-muted">Mensagem geral</span>}
             </div>
-            <div className="mt-1.5 leading-relaxed">{m.texto}</div>
+            <div className="mt-1.5 leading-relaxed">
+              <TextoComDestaque texto={m.texto} termos={termos} />
+            </div>
             <div className="mt-1 text-right text-[11px] text-muted">{dataBR(m.data_hora ?? m.created_at, true)}</div>
           </li>
         ))}

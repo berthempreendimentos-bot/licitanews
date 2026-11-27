@@ -5,6 +5,7 @@ import Link from "next/link";
 import { BellRing, CheckCheck, Trash2, Search, X, Tag, ExternalLink, Filter, CheckCircle2 } from "lucide-react";
 import { Empty, PageHeader } from "@/components/ui";
 import { corEvento, EventoTag } from "@/components/EventoTag";
+import { TextoComDestaque } from "@/components/TextoComDestaque";
 import { db, useCollection, useEmpresa } from "@/lib/store";
 import { comprasnetUrl } from "@/lib/monitor";
 import { dataBR } from "@/lib/format";
@@ -42,6 +43,12 @@ export default function Alertas() {
     return Array.from(mapa.entries()).sort((a, b) => b[1] - a[1]);
   }, [items]);
 
+  // Termos vigiados pela empresa: destacados em qualquer mensagem de alerta.
+  const vigiados = useMemo(
+    () => [empresa.cnpj, empresa.razao_social, ...(empresa.palavras_chave || [])].filter(Boolean),
+    [empresa.cnpj, empresa.razao_social, empresa.palavras_chave]
+  );
+
   // 2. Mapeia todos os nomes das menções presentes com contagem
   const nomesMencoes = useMemo(() => {
     const mapa = new Map<string, number>();
@@ -52,7 +59,6 @@ export default function Alertas() {
       }
     }
     // Inclui termos vigiados da empresa se aparecerem no texto
-    const vigiados = [empresa.cnpj, empresa.razao_social, ...(empresa.palavras_chave || [])].filter(Boolean);
     for (const v of vigiados) {
       if (!mapa.has(v)) {
         let count = 0;
@@ -66,7 +72,7 @@ export default function Alertas() {
       }
     }
     return Array.from(mapa.entries()).sort((a, b) => b[1] - a[1]);
-  }, [items, empresa]);
+  }, [items, vigiados]);
 
   // 3. Aplica todos os filtros combinados
   const listaFiltrada = useMemo(() => {
@@ -286,7 +292,9 @@ export default function Alertas() {
                     <span className="font-semibold text-sm text-brand">{a.titulo}</span>
                   </div>
 
-                  <p className="mt-1.5 text-sm leading-relaxed text-main whitespace-pre-line">{a.mensagem}</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-main whitespace-pre-line">
+                    <TextoComDestaque texto={a.mensagem} termos={vigiados} />
+                  </p>
 
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
                     <span>{dataBR(a.created_at, true)}</span>
