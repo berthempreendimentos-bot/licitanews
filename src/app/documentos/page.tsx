@@ -336,7 +336,6 @@ function Certidoes() {
   if (tab === "vencidas") docs = docs.filter((d) => d.validade && new Date(`${d.validade}T23:59:59`) < new Date());
   if (tab === "validas") docs = docs.filter((d) => d.validade && new Date(`${d.validade}T23:59:59`) >= new Date());
   docs.sort((a, b) => a.tipo.localeCompare(b.tipo) || (a.descricao ?? "").localeCompare(b.descricao ?? ""));
-  const porTipo = docs.reduce<Record<string, DocumentoEmpresa[]>>((acc, d) => { (acc[d.tipo] ??= []).push(d); return acc; }, {});
   const contagem = docs.length;
 
   return (
@@ -361,73 +360,92 @@ function Certidoes() {
       </div>
 
       {!docs.length ? <div className="text-center text-sm text-muted py-10">Nenhum documento neste filtro.</div> : null}
-      {Object.entries(porTipo).map(([tipo, lista]) => {
-        const semVencimento = lista.filter((d) => !d.validade).length;
-        return (
-          <div key={tipo} className="mb-6">
-            <div className="font-bold text-sm text-brand mb-2">{tipo} {semVencimento > 0 && <span className="text-muted text-xs">({semVencimento} sem validade)</span>}</div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {lista.map((d) => {
-                const st = statusDoc(d);
-                const nome = d.arquivo?.nome ?? d.descricao ?? "Sem nome";
-                return (
-                  <div key={d.id} className={`card space-y-2 p-3.5 transition hover:shadow-sm border-l-4 ${d.validade && new Date(`${d.validade}T23:59:59`) < new Date() ? "border-l-black" : st.dias != null && st.dias <= 30 ? "border-l-neutral-500" : "border-l-transparent"}`}>
-                    <div className="flex items-start gap-2">
-                      <span className="shrink-0 rounded-full border border-border bg-bg px-2 py-0.5 text-[10px] font-bold">{d.numero ?? "—"}</span>
-                      <div className="min-w-0 flex-1">
-                        <div className="line-clamp-2 text-sm font-semibold">{d.descricao || "Sem descrição"}</div>
-                        {d.emissao && <div className="text-[11px] text-muted">Emissão {dataBR(d.emissao)}</div>}
-                        {d.validade && <div className="text-[11px] font-semibold">Validade {dataBR(d.validade)} {st.dias == null ? "" : <span className={st.cls.split(" ").filter((c, i) => i > 0).join(" ")}>({st.label})</span>}</div>}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {d.arquivo && <span className="rounded bg-green-50 px-2 py-0.5 text-[10px] font-semibold text-green-700">PDF</span>}
-                      {d.link && <a href={d.link} target="_blank" rel="noreferrer" className="rounded bg-bg px-2 py-0.5 text-[10px] font-semibold text-accent hover:underline">Link</a>}
-                      {d.observacao && <span className="rounded bg-bg px-2 py-0.5 text-[10px] font-semibold text-muted line-clamp-1">{d.observacao}</span>}
-                    </div>
-                    <div className="flex items-center gap-1.5 pt-1">
-                      {d.arquivo && (
-                        <button className="btn btn-ghost !py-1 !text-xs" onClick={() => setVendo(d)} aria-label="Visualizar PDF">
-                          <Eye size={12} />
-                        </button>
-                      )}
-                      {d.arquivo && (
-                        <button className="btn btn-ghost !py-1 !text-xs" onClick={async () => {
-                          try {
-                            const { url } = await fetchComLogin(`/api/documentos/arquivo?path=${encodeURIComponent(d.arquivo!.path)}`);
-                            const r = await fetch(url);
-                            if (!r.ok) throw new Error(String(r.status));
-                            const blob = await r.blob();
-                            const a = document.createElement("a");
-                            a.href = URL.createObjectURL(blob);
-                            a.download = d.arquivo!.nome;
-                            document.body.appendChild(a); a.click(); a.remove();
-                            URL.revokeObjectURL(a.href);
-                          } catch (e) { alert(`Falha: ${(e as Error).message}`); }
-                        }}><Download size={12} /></button>
-                      )}
-                      {!d.arquivo && <span className="text-[11px] text-muted/60">Sem arquivo</span>}
-                      <div className="ml-auto flex gap-0.5">
-                        <button className="btn btn-ghost !p-1 !text-xs" onClick={() => setEdit(d)} aria-label="Editar"><Pencil size={12} /></button>
-                        {d.validade && new Date(`${d.validade}T23:59:59`) < new Date() && (
-                          <button className="btn btn-ghost !p-1 !text-xs" onClick={() => {
-                            const nV = prompt("Nova data de validade (DD/MM/AAAA)")?.trim();
-                            if (!nV) return;
-                            const [dd, mm, aaaa] = nV.split("/");
-                            if (!(dd && mm && aaaa && /^\d{4}-\d{2}-\d{2}$/.test(`${aaaa}-${mm}-${dd}`))) { alert("Data inválida."); return; }
-                            db.update("documentos", d.id, { validade: `${aaaa}-${mm}-${dd}` });
-                          }} title="Renovar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 11-3-6.7M21 3v6h-6"/></svg></button>
-                        )}
-                        <button className="btn btn-ghost !p-1 !text-xs text-danger" onClick={() => { if (confirm("Excluir documento?")) { if (d.arquivo) void removerPdf(d.arquivo.path); db.remove("documentos", d.id); } }}><Trash2 size={12} /></button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+      {docs.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-[11px] uppercase tracking-wider text-muted">
+                  <th className="px-4 py-2">Documento</th>
+                  <th className="px-4 py-2">Número</th>
+                  <th className="px-4 py-2">Emissão</th>
+                  <th className="px-4 py-2">Validade</th>
+                  <th className="px-4 py-2">Situação</th>
+                  <th className="px-4 py-2 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {docs.map((d) => {
+                  const st = statusDoc(d);
+                  const pastaNome = d.pasta_id ? nomeCompletoPasta(d.pasta_id, pastas) : "";
+                  return (
+                    <tr key={d.id} className="border-b border-border last:border-0 hover:bg-bg">
+                      <td className="px-4 py-2.5">
+                        <div className="font-medium">{d.tipo}</div>
+                        {d.descricao && <div className="text-[11px] text-muted">{d.descricao}</div>}
+                        {pastaNome && <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted"><Folder size={11} /> {pastaNome}</div>}
+                        {d.observacao && <div className="mt-0.5 text-[11px] text-muted">{d.observacao}</div>}
+                      </td>
+                      <td className="px-4 py-2.5 text-muted">{d.numero || "—"}</td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-muted">{dataBR(d.emissao ? `${d.emissao}T12:00:00` : null)}</td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">{dataBR(d.validade ? `${d.validade}T12:00:00` : null)}</td>
+                      <td className="px-4 py-2.5"><span className={`badge ${st.cls}`}>{st.label}</span></td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center justify-end gap-2.5">
+                          {d.arquivo && (
+                            <button onClick={() => setVendo(d)} aria-label="Visualizar PDF" title="Visualizar PDF" className="text-muted hover:text-black">
+                              <Eye size={15} />
+                            </button>
+                          )}
+                          {d.arquivo && (
+                            <button onClick={async () => {
+                              try {
+                                const { url } = await fetchComLogin(`/api/documentos/arquivo?path=${encodeURIComponent(d.arquivo!.path)}`);
+                                const r = await fetch(url);
+                                if (!r.ok) throw new Error(String(r.status));
+                                const blob = await r.blob();
+                                const a = document.createElement("a");
+                                a.href = URL.createObjectURL(blob);
+                                a.download = d.arquivo!.nome;
+                                document.body.appendChild(a); a.click(); a.remove();
+                                URL.revokeObjectURL(a.href);
+                              } catch (e) { alert(`Falha: ${(e as Error).message}`); }
+                            }} aria-label="Baixar PDF" title="Baixar PDF" className="text-muted hover:text-black">
+                              <Download size={15} />
+                            </button>
+                          )}
+                          {d.link && (
+                            <a href={d.link} target="_blank" rel="noreferrer" aria-label="Abrir link" title="Abrir link" className="text-muted hover:text-black">
+                              <ExternalLink size={14} />
+                            </a>
+                          )}
+                          {d.validade && new Date(`${d.validade}T23:59:59`) < new Date() && (
+                            <button onClick={() => {
+                              const nV = prompt("Nova data de validade (DD/MM/AAAA)")?.trim();
+                              if (!nV) return;
+                              const [dd, mm, aaaa] = nV.split("/");
+                              if (!(dd && mm && aaaa && /^\d{4}-\d{2}-\d{2}$/.test(`${aaaa}-${mm}-${dd}`))) { alert("Data inválida."); return; }
+                              db.update("documentos", d.id, { validade: `${aaaa}-${mm}-${dd}` });
+                            }} aria-label="Renovar" title="Renovar" className="text-muted hover:text-black">
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 11-3-6.7M21 3v6h-6"/></svg>
+                            </button>
+                          )}
+                          <button onClick={() => setEdit(d)} aria-label="Editar" title="Editar" className="text-muted hover:text-black">
+                            <Pencil size={14} />
+                          </button>
+                          <button onClick={() => { if (confirm("Excluir documento?")) { if (d.arquivo) void removerPdf(d.arquivo.path); db.remove("documentos", d.id); } }} aria-label="Excluir" title="Excluir" className="text-muted hover:text-danger">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        );
-      })}
+        </div>
+      )}
       {(edit || edit === "new") && <DocForm doc={edit === "new" ? null : edit} pastaInicial={filtroPasta !== "todas" && filtroPasta !== "sem" ? filtroPasta : null} onClose={() => setEdit(null)} onVer={(d) => setVendo(d)} />}
       {vendo && <VisualizarPdf arquivo={vendo.arquivo!} titulo={vendo.arquivo?.nome ?? vendo.descricao} onClose={() => setVendo(null)} />}
     </div>
