@@ -109,12 +109,25 @@ export function RelatorioConteudo({ r, titulo, fonte, data, escolhidos = [] }: P
 
   return (
     <div className="relatorio-print">
-      <header className="rel-topo">
-        <div className="rel-kicker">Análise de edital · {data}</div>
-        <h1 className="rel-h1">{limpo(g.orgao)}</h1>
-        <div className="rel-sub">{[g.modalidade, !vazio(g.numero_processo) && `Processo ${g.numero_processo}`, g.criterio_julgamento].filter((x) => x && !vazio(x as string)).join(" · ")}</div>
-        <p className="rel-objeto">{g.objeto || titulo}</p>
-      </header>
+      {/* <div> e não <header>: a regra de impressão "header { display:none }" esconde o cabeçalho do app. */}
+      <div className="rel-topo">
+        <div className="rel-topo-linha">
+          {/* Logo do sistema no topo, à esquerda (mesma marca da barra lateral). */}
+          <div className="rel-logo">
+            <div className="rel-logo-marca">P</div>
+            <div className="rel-logo-txt">
+              <div className="rel-logo-nome">PEPPACORP</div>
+              <div className="rel-logo-sub">LICITA</div>
+            </div>
+          </div>
+          <div className="rel-topo-info">
+            <div className="rel-kicker">Análise de edital · {data}</div>
+            <h1 className="rel-h1">{limpo(g.orgao)}</h1>
+            <div className="rel-sub">{[g.modalidade, !vazio(g.numero_processo) && `Processo ${g.numero_processo}`, g.criterio_julgamento].filter((x) => x && !vazio(x as string)).join(" · ")}</div>
+            <p className="rel-objeto">{g.objeto || titulo}</p>
+          </div>
+        </div>
+      </div>
 
       <table className="rel-fatos">
         <tbody>

@@ -106,6 +106,13 @@ body {
 }
 .relatorio-print b { font-weight: 600; }
 .rel-topo { background: var(--rel-navy); color: #fff; padding: 9pt 11pt 8pt; border-radius: 4pt; margin-bottom: 7pt; border-bottom: 3pt solid #ff7a90; }
+.rel-topo-linha { display: flex; align-items: flex-start; gap: 9pt; }
+.rel-topo-info { flex: 1; min-width: 0; }
+.rel-logo { display: flex; align-items: center; gap: 5pt; flex-shrink: 0; }
+.rel-logo-marca { width: 24pt; height: 24pt; border-radius: 6pt; background: #fff; color: #000; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13pt; line-height: 1; }
+.rel-logo-txt { line-height: 1; }
+.rel-logo-nome { color: #fff; font-weight: 800; letter-spacing: .04em; font-size: 9pt; }
+.rel-logo-sub { color: rgba(255,255,255,.62); font-weight: 700; letter-spacing: .18em; font-size: 6.5pt; margin-top: 1.5pt; }
 .rel-kicker { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .08em; color: #ff9fb0; font-weight: 700; }
 .rel-h1 { font-size: 13pt; font-weight: 800; margin: 2pt 0 1pt; }
 .rel-sub { font-size: 8.5pt; color: #c9d4ea; }
